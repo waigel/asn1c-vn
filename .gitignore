@@ -1,0 +1,6 @@
+# build output
+*.o
+*.a
+/asn1vn
+# asn1c-generated code for the test schemas
+/tests/gen/
