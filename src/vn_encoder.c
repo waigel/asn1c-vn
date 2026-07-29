@@ -54,8 +54,8 @@ static const struct vn_dispatch_s {
     const asn_TYPE_operation_t *op;
     vn_handler_f                handler;
 } vn_dispatch[] = {
-    /* Filled in by the tasks that implement each family. */
-    { 0, 0 }
+    { &asn_OP_BOOLEAN, vn_h_boolean },
+    { &asn_OP_NULL,    vn_h_null    }
 };
 
 int
