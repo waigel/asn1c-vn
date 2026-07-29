@@ -47,12 +47,38 @@ libvn.a: check-skeldir $(VN_OBJS)
 GEN_DIR ?=
 PDU     ?=
 
+# asn1c's generated sources, minus its example main so ours is used instead.
+GEN_SRCS = $(filter-out $(GEN_DIR)/converter-example.c,$(wildcard $(GEN_DIR)/*.c))
+
 asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
 	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
-	$(CC) $(ALL_CFLAGS) -I$(GEN_DIR) -DPDU=$(PDU) \
-	    tools/asn1vn.c $(VN_SRCS) \
-	    $(filter-out $(GEN_DIR)/converter-example.c,$(wildcard $(GEN_DIR)/*.c)) \
+	@test -d "$(GEN_DIR)" || { \
+	    echo "GEN_DIR=$(GEN_DIR) is not a directory" >&2; exit 1; }
+	@# An empty file list would otherwise reach the linker as a pile of
+	@# undefined symbols instead of naming the actual problem.
+	@test -n "$(strip $(GEN_SRCS))" || { \
+	    echo "no *.c files in GEN_DIR=$(GEN_DIR)" >&2; \
+	    echo "point GEN_DIR at the directory holding asn1c's output;" >&2; \
+	    echo "some projects generate into a subdirectory such as dist/" >&2; \
+	    exit 1; }
+	@test -f "$(GEN_DIR)/$(PDU).h" || { \
+	    echo "GEN_DIR=$(GEN_DIR) has no $(PDU).h, so PDU=$(PDU) is wrong" >&2; \
+	    exit 1; }
+	@# Generated code is asn1c's, not ours: compile it separately with warnings
+	@# off, into our own tree so GEN_DIR is left untouched.
+	@#
+	@# -idirafter, never -I: a schema may define an ASN.1 type whose generated
+	@# header shadows a system one. PKIX defines Time, yielding Time.h, which
+	@# on a case-insensitive filesystem captures the #include <time.h> in
+	@# GeneralizedTime.c and leaves struct tm incomplete. -idirafter searches
+	@# GEN_DIR after the system directories, so system headers win while the
+	@# schema's own headers are still found.
+	@mkdir -p build/gen
+	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
+	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
+	$(CC) $(ALL_CFLAGS) -idirafter $(GEN_DIR) -DPDU=$(PDU) \
+	    tools/asn1vn.c $(VN_SRCS) build/gen/*.o \
 	    -o $@ -lm
 
 # ---- tests ----------------------------------------------------------------
@@ -114,6 +140,6 @@ check: check-skeldir $(addprefix tests/bin/,$(TESTS))
 	done; exit $$rc
 
 clean:
-	rm -rf tests/bin tests/gen libvn.a asn1vn $(VN_OBJS)
+	rm -rf tests/bin tests/gen build libvn.a asn1vn $(VN_OBJS)
 
 .PHONY: check clean check-skeldir

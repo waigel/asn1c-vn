@@ -108,6 +108,24 @@ asn1vn [-c|-a] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der
 
 Exit status is 0 on success, 1 on a decode or encode failure, 2 on a usage error.
 
+The tool decodes **every** value in the input, not just the first. A single DER
+value is the common case, but some formats concatenate them — an SGP.22 profile
+package is a sequence of `ProfileElement` TLVs one after another — and stopping
+after one would silently ignore almost the whole file. With more than one value
+the output is a sequence of X.680 values rather than a single value; annotated
+mode labels each with its byte offset. Input left undecoded is always an error,
+never ignored.
+
+### A note on generated headers shadowing system ones
+
+The CLI passes `GEN_DIR` with `-idirafter`, not `-I`. A schema may define an ASN.1
+type whose generated header collides with a system header: the PKIX modules used
+by eSIM profiles define `Time`, producing `Time.h`, which on a case-insensitive
+filesystem captures the `#include <time.h>` inside asn1c's own
+`GeneralizedTime.c` and leaves `struct tm` incomplete. `-idirafter` searches
+`GEN_DIR` after the system directories, so system headers win while the schema's
+own headers are still found.
+
 ## API
 
 ```c

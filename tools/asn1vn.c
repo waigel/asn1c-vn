@@ -37,7 +37,7 @@ main(int argc, char **argv) {
     vn_options_t opts;
     char reason[256] = "";
     unsigned char *buf;
-    size_t cap = 1 << 16, len = 0, n;
+    size_t cap = 1 << 16, len = 0, n, offset, count = 0;
     void *st = 0;
     asn_dec_rval_t rv;
     int i;
@@ -94,23 +94,74 @@ main(int argc, char **argv) {
         return 2;
     }
 
-    rv = asn_decode(0, ATS_BER, &VN_PDU_DEF, &st, buf, len);
-    free(buf);
-    if(rv.code != RC_OK) {
-        fprintf(stderr, "%s: BER/DER decode failed (code %d) after %lu bytes\n",
-                argv[0], (int)rv.code, (unsigned long)rv.consumed);
-        if(st) ASN_STRUCT_FREE(VN_PDU_DEF, st);
-        return 1;
-    }
+    /*
+     * Decode every PDU in the input, not just the first.
+     *
+     * A single DER value is the common case, but some formats concatenate them:
+     * an SGP.22 profile package is a sequence of ProfileElement TLVs one after
+     * another, so stopping after one would silently ignore almost the whole
+     * file. Each value is emitted in turn; with more than one, the output is a
+     * sequence of X.680 values rather than a single value.
+     */
+    for(offset = 0; offset < len; count++) {
+        st = 0;
+        rv = asn_decode(0, ATS_BER, &VN_PDU_DEF, &st, buf + offset,
+                        len - offset);
+        if(rv.code != RC_OK) {
+            fprintf(stderr,
+                    "%s: BER/DER decode failed (code %d) at byte %lu of %lu",
+                    argv[0], (int)rv.code, (unsigned long)(offset + rv.consumed),
+                    (unsigned long)len);
+            if(count) fprintf(stderr, ", after %lu value(s)", (unsigned long)count);
+            fputc('\n', stderr);
+            if(st) ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            free(buf);
+            return 1;
+        }
+        if(rv.consumed == 0) { /* no progress: refuse to loop forever */
+            fprintf(stderr, "%s: decoder consumed no input at byte %lu\n",
+                    argv[0], (unsigned long)offset);
+            if(st) ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            free(buf);
+            return 1;
+        }
 
-    if(vn_fprint(stdout, &VN_PDU_DEF, st, &opts) < 0) {
-        fprintf(stderr, "%s: cannot render value notation: %s\n", argv[0],
-                reason[0] ? reason : "unknown error");
+        if(count && fputc('\n', stdout) == EOF) {
+            perror("write");
+            ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            free(buf);
+            return 1;
+        }
+        if(opts.mode == VN_MODE_ANNOTATED
+           && printf("-- value %lu at byte %lu --\n", (unsigned long)count + 1,
+                     (unsigned long)offset)
+                  < 0) {
+            perror("write");
+            ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            free(buf);
+            return 1;
+        }
+        if(vn_fprint(stdout, &VN_PDU_DEF, st, &opts) < 0) {
+            fprintf(stderr, "%s: cannot render value notation: %s\n", argv[0],
+                    reason[0] ? reason : "unknown error");
+            ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            free(buf);
+            return 1;
+        }
+        fputc('\n', stdout);
+
         ASN_STRUCT_FREE(VN_PDU_DEF, st);
+        offset += rv.consumed;
+    }
+
+    free(buf);
+    if(count == 0) {
+        fprintf(stderr, "%s: input is empty\n", argv[0]);
         return 1;
     }
-    fputc('\n', stdout);
-
-    ASN_STRUCT_FREE(VN_PDU_DEF, st);
+    if(fflush(stdout) != 0) {
+        perror("write");
+        return 1;
+    }
     return 0;
 }

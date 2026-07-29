@@ -5,5 +5,6 @@
 *.dSYM/
 
 # test binaries, and the asn1c-generated code they link against
+/build/
 /tests/bin/
 /tests/gen/
