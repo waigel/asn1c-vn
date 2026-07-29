@@ -81,10 +81,21 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 	    tools/asn1vn.c $(VN_SRCS) build/gen/*.o \
 	    -o $@ -lm
 
+# ---- annotation sidecar ---------------------------------------------------
+# Recovers the identifiers asn1c parses but does not keep in the runtime
+# descriptors -- INTEGER named numbers and BIT STRING named bits -- from the
+# generated headers, where they survive as C enums.
+#
+#   make vn-annotate
+#   ./vn-annotate <gen-dir> > vn_annotations.c
+
+vn-annotate: tools/vn-annotate.c
+	$(CC) $(STD) $(WARN) $(CFLAGS) $(EXTRA) $(VN_INC) -I$(SKELDIR) $< -o $@
+
 # ---- tests ----------------------------------------------------------------
 
 SCHEMAS := prim constructed strings opentype kitchen
-TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm
+TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate
 
 t_link_SCHEMA   := prim
 t_writer_SCHEMA := prim
@@ -100,6 +111,7 @@ t_scan_SCHEMA     := prim
 t_golden_SCHEMA   := constructed
 t_xercheck_SCHEMA := kitchen
 t_norm_SCHEMA     := prim
+t_annotate_SCHEMA := prim
 
 # asn1c writes into the current directory, so generate inside the target.
 tests/gen/%/.stamp: tests/schemas/%.asn1

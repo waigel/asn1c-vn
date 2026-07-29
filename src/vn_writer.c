@@ -11,6 +11,18 @@
 #include <string.h>
 #include "vn_internal.h"
 
+const vn_type_names_t *
+vn_annotations_find(const vn_annotations_t *ann, const char *type_name) {
+    size_t i;
+
+    if(!ann || !type_name || !type_name[0]) return 0;
+    for(i = 0; i < ann->count; i++)
+        if(ann->types[i].type_name
+           && strcmp(ann->types[i].type_name, type_name) == 0)
+            return &ann->types[i];
+    return 0;
+}
+
 void
 vn_writer_init(vn_writer_t *w, const vn_options_t *opts,
                asn_app_consume_bytes_f *cb, void *key) {
@@ -23,6 +35,7 @@ vn_writer_init(vn_writer_t *w, const vn_options_t *opts,
     w->flags = opts ? opts->flags : 0u;
     w->errbuf = opts ? opts->errbuf : 0;
     w->errlen = opts ? opts->errlen : 0;
+    w->annotations = opts ? opts->annotations : 0;
 
     /* Canonical output must not vary with caller preferences, or two callers
      * could produce differing "canonical" text for the same value. */

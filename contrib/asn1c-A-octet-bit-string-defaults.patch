@@ -1,0 +1,178 @@
+From 0065f9860a5040d1f3d5c0235ce4ac86246117f4 Mon Sep 17 00:00:00 2001
+From: Johannes Waigel <johannes@waigel.me>
+Date: Wed, 29 Jul 2026 16:17:21 +0200
+Subject: [PATCH] Emit DEFAULT values for OCTET STRING and BIT STRING
+
+try_inline_default() handled BOOLEAN, INTEGER and ENUMERATED defaults
+(ATV_INTEGER/ATV_TRUE/ATV_FALSE) and known-multiplier string defaults
+(ATV_STRING). Everything else fell through, so a declaration such as
+
+    lcsi [10] OCTET STRING (SIZE (1)) DEFAULT '05'H
+
+was parsed into the AST -- asn1c -E prints it back -- and then dropped:
+the generated member carried 0, 0, /* No default value */. The runtime
+hook default_value_set already exists and the decoders already call it;
+only the emission was missing.
+
+Handles ATV_BITVECTOR for both OCTET STRING and BIT STRING, and ATV_STRING
+for OCTET STRING. BIT STRING also gets bits_unused, computed from
+size_in_bits, in both the comparator and the setter. An OCTET STRING with
+a partial-octet bit vector is rejected rather than truncated.
+
+Verified on the GSMA eSIM test profiles: the number of retained defaults
+in the generated code rises from 13 to 23, and rendering a profile as
+value notation now reproduces every lcsi value that the reference tooling
+prints.
+---
+ libasn1compiler/asn1c_C.c | 128 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 128 insertions(+)
+
+diff --git a/libasn1compiler/asn1c_C.c b/libasn1compiler/asn1c_C.c
+index b22a46db..903d80cb 100644
+--- a/libasn1compiler/asn1c_C.c
++++ b/libasn1compiler/asn1c_C.c
+@@ -2326,6 +2326,36 @@ emit_default_string_value(arg_t *arg, asn1p_value_t *v) {
+ 	}
+ }
+ 
++/*
++ * Emit `static const uint8_t defv[]` for an OCTET STRING or BIT STRING DEFAULT
++ * and return its length in octets.
++ *
++ * A trailing zero is always appended, both so the initialiser is never empty and
++ * so the buffer stays NUL-terminated the way the OCTET_STRING codecs expect. The
++ * length is emitted separately, since it is not sizeof(defv).
++ */
++static int
++emit_default_octets_value(arg_t *arg, asn1p_value_t *v) {
++	const uint8_t *b;
++	int len, i;
++
++	if(v->type == ATV_BITVECTOR) {
++		b = v->value.binary_vector.bits;
++		len = (v->value.binary_vector.size_in_bits + 7) / 8;
++	} else {
++		assert(v->type == ATV_STRING);
++		b = v->value.string.buf;
++		len = v->value.string.size;
++	}
++
++	OUT("static const uint8_t defv[] = { ");
++	for(i = 0; i < len; i++)
++		OUT("0x%02x, ", b[i]);
++	OUT("0 };\n");
++
++	return len;
++}
++
+ static int
+ try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
+ 	int save_target = arg->target->target;
+@@ -2417,6 +2447,104 @@ try_inline_default(arg_t *arg, asn1p_expr_t *expr, int out) {
+ 
+ 		REDIR(save_target);
+ 		return 1;
++	case ASN_BASIC_OCTET_STRING:
++	case ASN_BASIC_BIT_STRING: {
++		/*
++		 * An OCTET STRING or BIT STRING DEFAULT was parsed into the AST but
++		 * never reached the generated code, so `lcsi OCTET STRING DEFAULT
++		 * '05'H` compiled to "No default value" and the value was lost. The
++		 * runtime hook (default_value_set) already exists and the decoders
++		 * already call it; only the emission was missing.
++		 */
++		int is_bit_string = (etype == ASN_BASIC_BIT_STRING);
++		asn1p_value_t *dv = expr->marker.default_value;
++		int nbits, len, bits_unused = 0;
++
++		if(dv == NULL
++		|| (dv->type != ATV_BITVECTOR && dv->type != ATV_STRING))
++			break;
++
++		if(dv->type == ATV_BITVECTOR) {
++			nbits = dv->value.binary_vector.size_in_bits;
++			len = (nbits + 7) / 8;
++			bits_unused = (8 - (nbits % 8)) % 8;
++			/* An OCTET STRING cannot hold a partial octet. */
++			if(!is_bit_string && bits_unused) break;
++		} else {
++			/* A cstring default is not meaningful for BIT STRING. */
++			if(is_bit_string) break;
++			len = dv->value.string.size;
++		}
++
++		if(!out) {
++			if(C99_MODE) OUT(".default_value_cmp = ");
++			OUT("&asn_DFL_%d_cmp,", expr->_type_unique_index);
++			OUT("\t/* Compare DEFAULT, %d octet(s) */\n", len);
++			if(C99_MODE) OUT(".default_value_set = ");
++			OUT("&asn_DFL_%d_set,", expr->_type_unique_index);
++			OUT("\t/* Set DEFAULT, %d octet(s) */\n", len);
++			return 1;
++		}
++
++		REDIR(OT_STAT_DEFS);
++
++		OUT("static int asn_DFL_%d_cmp(const void *sptr) {\n",
++			expr->_type_unique_index);
++		INDENT(+1);
++		emit_default_octets_value(arg, dv);
++		OUT("const %s *st = sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
++		OUT("\n");
++		OUT("if(!st) {\n");
++		OUT("\treturn -1; /* No value is not a default value */\n");
++		OUT("}\n");
++		OUT("\n");
++		if(len == 0) {
++			/* memcmp() with a null pointer is undefined even for zero
++			 * length, so compare the size alone. */
++			OUT("if(st->size == 0");
++		} else {
++			OUT("if(st->size == %d\n", len);
++			OUT("&& memcmp(st->buf, defv, %d) == 0", len);
++		}
++		if(is_bit_string) {
++			/* OUT() permits at most one newline, and only as the last
++			 * character of the format string. */
++			OUT("\n");
++			OUT("&& st->bits_unused == %d", bits_unused);
++		}
++		OUT(")\n");
++		OUT("\treturn 0;\n");
++		OUT("return 1;\n");
++		INDENT(-1);
++		OUT("}\n");
++
++		OUT("static int asn_DFL_%d_set(void **sptr) {\n",
++			expr->_type_unique_index);
++		INDENT(+1);
++		emit_default_octets_value(arg, dv);
++		OUT("%s *st = *sptr;\n", asn1c_type_name(arg, expr, TNF_CTYPE));
++		OUT("uint8_t *nstr = MALLOC(%d);\n", len + 1);
++		OUT("\n");
++		OUT("if(!nstr) return -1;\n");
++		OUT("memcpy(nstr, defv, %d);\n", len + 1);
++		OUT("\n");
++		OUT("if(st) {\n");
++		OUT("\tFREEMEM(st->buf);\n");
++		OUT("} else {\n");
++		OUT("\tst = (*sptr = CALLOC(1, sizeof(*st)));\n");
++		OUT("\tif(!st) { FREEMEM(nstr); return -1; }\n");
++		OUT("}\n");
++		OUT("st->buf = nstr;\n");
++		OUT("st->size = %d;\n", len);
++		if(is_bit_string) OUT("st->bits_unused = %d;\n", bits_unused);
++		OUT("\n");
++		OUT("return 0;\n");
++		INDENT(-1);
++		OUT("}\n");
++
++		REDIR(save_target);
++		return 1;
++	  }
+ 	case ASN_BASIC_NULL:
+ 		//expr->marker.flags &= ~EM_INDIRECT;
+ 		return 0;
+-- 
+2.50.1 (Apple Git-155)
+

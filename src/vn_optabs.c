@@ -118,3 +118,15 @@ RELATIVE_OID_get_arcs(const RELATIVE_OID_t *roid, asn_oid_arc_t *arcs,
     (void)arc_slots;
     return -1;
 }
+
+/*
+ * Weak fallback for the annotation table.
+ *
+ * A consumer that wants identifier output links the file produced by
+ * vn-annotate, whose strong definition overrides this one. Without it the table
+ * is empty and the encoder emits the numeric forms, which are equally valid
+ * X.680. Same mechanism as the operation tables above, for the same reason.
+ */
+#include <vn_encoder.h>
+
+__attribute__((weak)) const vn_annotations_t vn_generated_annotations = { 0, 0 };

@@ -27,6 +27,39 @@ typedef enum {
 #define VN_F_ENUM_WITH_VALUE 0x02u /* `green -- (1) --` instead of `green` */
 #define VN_F_STRICT_ANY      0x04u /* fail on bare ANY instead of emitting hex */
 
+/*
+ * Optional annotation table: the identifiers asn1c does not keep at runtime.
+ *
+ * asn1c retains ENUMERATED identifiers but not INTEGER named numbers or
+ * BIT STRING named bit lists, and for INTEGER it must not -- X.693 8.3.4
+ * prohibits the identifier form in XER. The names do survive as C enums in the
+ * generated headers, and tools/vn-annotate.c turns those into a table.
+ *
+ * Supplying one lets `keyReference pukAppl1` be written instead of
+ * `keyReference 1`. Leaving it NULL keeps the numeric forms, which are equally
+ * valid X.680.
+ */
+typedef struct vn_named_value_s {
+    const char *name;
+    long        value; /* for a bit list, the bit position */
+} vn_named_value_t;
+
+typedef struct vn_type_names_s {
+    const char             *type_name; /* matches asn_TYPE_descriptor_t.name */
+    const vn_named_value_t *values;
+    size_t                  count;
+    int                     is_bit_string; /* named bits, not named numbers */
+} vn_type_names_t;
+
+typedef struct vn_annotations_s {
+    const vn_type_names_t *types;
+    size_t                 count;
+} vn_annotations_t;
+
+/* Look up a type's names, or NULL. Exposed because the reader needs it too. */
+const vn_type_names_t *vn_annotations_find(const vn_annotations_t *ann,
+                                           const char *type_name);
+
 typedef struct vn_options_s {
     vn_mode_e mode;
     int       indent_width; /* 0 = mode default (4); ignored when CANONICAL */
@@ -34,6 +67,7 @@ typedef struct vn_options_s {
     unsigned  flags;
     char     *errbuf;       /* optional; receives a human-readable reason */
     size_t    errlen;
+    const vn_annotations_t *annotations; /* optional; see above */
 } vn_options_t;
 
 /*

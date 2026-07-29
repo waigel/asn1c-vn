@@ -229,6 +229,48 @@ vn_h_bit_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
                 ? bs->size * 8 - (size_t)bs->bits_unused
                 : 0;
 
+    /*
+     * A named bit list, if the annotation table supplies one: `{ keyCert,
+     * crlSign }`. Only the set bits are listed, in ascending position, which is
+     * the X.680 form. A bit set beyond the named list would be unrepresentable
+     * this way, so fall back to the string forms in that case rather than lose
+     * it.
+     */
+    {
+        const vn_type_names_t *names =
+            vn_annotations_find(w->annotations, td->name);
+        if(names && names->is_bit_string) {
+            size_t i, listed = 0;
+            int    unnamed = 0;
+
+            for(i = 0; i < nbits; i++) {
+                unsigned bit = (bs->buf[i / 8] >> (7 - i % 8)) & 1u;
+                size_t   j;
+                if(!bit) continue;
+                for(j = 0; j < names->count; j++)
+                    if((size_t)names->values[j].value == i) break;
+                if(j == names->count) { unnamed = 1; break; }
+            }
+            if(!unnamed) {
+                if(vn_putc(w, '{') < 0) return -1;
+                for(i = 0; i < nbits; i++) {
+                    unsigned bit = (bs->buf[i / 8] >> (7 - i % 8)) & 1u;
+                    size_t   j;
+                    if(!bit) continue;
+                    for(j = 0; j < names->count; j++) {
+                        if((size_t)names->values[j].value != i) continue;
+                        if(listed && vn_putc(w, ',') < 0) return -1;
+                        if(vn_putc(w, ' ') < 0) return -1;
+                        if(vn_puts(w, names->values[j].name) < 0) return -1;
+                        listed++;
+                        break;
+                    }
+                }
+                return vn_puts(w, listed ? " }" : "}");
+            }
+        }
+    }
+
     if(nbits > 0 && nbits % 4 == 0) {
         size_t ndigits = nbits / 4;
         if(vn_putc(w, '\'') < 0) return -1;
@@ -367,15 +409,46 @@ vn_h_integer(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
     return vn_int_decimal(w, td, (const INTEGER_t *)sptr);
 }
 
+/*
+ * An INTEGER named number, if the annotation table supplies one. asn1c keeps
+ * these only in the generated headers, never in the descriptors; see
+ * vn_annotations_t. Returns 1 when a name was written.
+ */
+static int
+vn_try_named_number(vn_writer_t *w, const asn_TYPE_descriptor_t *td, long value) {
+    const vn_type_names_t *names =
+        vn_annotations_find(w->annotations, td->name);
+    size_t i;
+
+    if(!names || names->is_bit_string) return 0;
+    for(i = 0; i < names->count; i++) {
+        if(names->values[i].value != value) continue;
+        if(vn_puts(w, names->values[i].name) < 0) return -1;
+        if(w->flags & VN_F_ENUM_WITH_VALUE) {
+            if(vn_putc(w, ' ') < 0) return -1;
+            if(vn_is_annotated(w)) return vn_comment(w, "(%ld)", value) < 0 ? -1 : 1;
+            if(vn_printf(w, "-- (%ld) --", value) < 0) return -1;
+        }
+        return 1;
+    }
+    return 0;
+}
+
 int
 vn_h_native_integer(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
                     const void *sptr, int level) {
     const asn_INTEGER_specifics_t *specs =
         (const asn_INTEGER_specifics_t *)td->specifics;
     (void)level;
+
     if(specs && specs->field_unsigned)
         return vn_printf(w, "%lu", *(const unsigned long *)sptr);
-    return vn_printf(w, "%ld", *(const long *)sptr);
+    {
+        long value = *(const long *)sptr;
+        int rc = vn_try_named_number(w, td, value);
+        if(rc != 0) return rc < 0 ? -1 : 0;
+        return vn_printf(w, "%ld", value);
+    }
 }
 
 /* Shared by ENUMERATED and NativeEnumerated once the value is a long. */

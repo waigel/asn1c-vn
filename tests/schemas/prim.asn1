@@ -6,6 +6,12 @@ Prim DEFINITIONS AUTOMATIC TAGS ::= BEGIN
 
 Colour ::= ENUMERATED { red(0), green(1), blue(2) }
 
+-- Identifiers asn1c keeps only in the generated headers, never in the runtime
+-- descriptors: Level gets "0 /* No specifics */" and Flags points at the
+-- generic asn_SPC_BIT_STRING_specs. The annotation sidecar recovers them.
+Level ::= INTEGER { low(0), medium(5), high(10) }
+Flags ::= BIT STRING { keyCert(0), crlSign(1), dataEncipher(3) }
+
 Holder ::= SEQUENCE {
     flag  BOOLEAN,
     void  NULL,

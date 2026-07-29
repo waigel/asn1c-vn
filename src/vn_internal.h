@@ -16,6 +16,7 @@ typedef struct vn_writer_s {
     unsigned    flags;
     char       *errbuf;
     size_t      errlen;
+    const vn_annotations_t *annotations;
     size_t      written;   /* bytes handed to cb so far */
     int         failed;    /* sticky */
     const asn_TYPE_descriptor_t *failed_td;

@@ -2,6 +2,8 @@
 *.o
 *.a
 /asn1vn
+/asn1vn-named
+/vn-annotate
 *.dSYM/
 
 # test binaries, and the asn1c-generated code they link against
