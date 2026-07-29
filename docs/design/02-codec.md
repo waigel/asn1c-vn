@@ -3,7 +3,7 @@
 **Status:** decided; sidecar implemented first, reader to follow
 **Date:** 2026-07-29
 **Normative reference:** ITU-T X.680 (02/2021)
-**Predecessor:** `2026-07-29-asn1c-vn-design.md` (the encoder)
+**Predecessor:** `01-encoder.md`
 
 ## Goal
 

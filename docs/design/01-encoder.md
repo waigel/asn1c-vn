@@ -220,7 +220,7 @@ asn1c-vn/
     schemas/            # one .asn1 per type family, plus a kitchen-sink schema
     golden/             # expected output per schema per mode
     <drivers>.c
-  docs/superpowers/specs/
+  docs/design/
 ```
 
 Each source file has one job and can be read on its own: the writer knows about bytes and
@@ -231,7 +231,7 @@ The CLI takes the root type by token pasting (`-DPDU=ProfileElement` →
 `asn_DEF_ProfileElement`) and is linked against a generated directory via `GEN_DIR`, as in:
 
 ```sh
-make GEN_DIR=$HOME/git/waigel/esim-gen PDU=ProfileElement
+make GEN_DIR=<asn1c output dir> PDU=ProfileElement
 ./asn1vn < profile_element.der
 ```
 

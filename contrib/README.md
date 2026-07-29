@@ -41,7 +41,9 @@ Two flags are required that are easy to get wrong:
    `struct tm` incomplete.
 
 ```make
-VN_DIR ?= $(HOME)/git/waigel/asn1c-vn
+# A submodule keeps this reproducible for anyone cloning the project;
+# a plain relative path works for a side-by-side checkout.
+VN_DIR ?= asn1c-vn
 
 $(DIST)/converter-example.c: $(ASN1_SOURCES)
 	mkdir -p $(DIST)

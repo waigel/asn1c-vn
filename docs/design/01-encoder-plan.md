@@ -1,6 +1,9 @@
 # asn1c-vn Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Historical record: the implementation plan this encoder was built from, kept
+> because its task notes explain several non-obvious decisions. Steps use
+> checkbox syntax; boxes are unticked because the plan was executed in one pass
+> rather than tracked.
 
 **Goal:** A runtime addon for vlm/asn1c that serialises a decoded ASN.1 structure into X.680 value notation.
 
@@ -8,7 +11,7 @@
 
 **Tech Stack:** C99, POSIX make, asn1c 0.9.29 runtime skeletons. No third-party dependencies. Tests are C programs; no Python.
 
-**Spec:** `docs/superpowers/specs/2026-07-29-asn1c-vn-design.md`
+**Spec:** `docs/design/01-encoder.md`
 
 ## Global Constraints
 
@@ -3026,7 +3029,7 @@ well-formedness scanner instead."
 
 **Files:**
 - Create: `tools/asn1vn.c`, `README.md`
-- Modify: `docs/superpowers/specs/2026-07-29-asn1c-vn-design.md` (correct the XER hex format and record the oracle change)
+- Modify: `docs/design/01-encoder.md` (correct the XER hex format and record the oracle change)
 
 **Interfaces:**
 - Consumes: `vn_fprint`, `vn_options_t`.
@@ -3154,7 +3157,7 @@ Then a **Deviations from X.680** section, stating plainly:
 
 - [ ] **Step 4: Correct the spec**
 
-In `docs/superpowers/specs/2026-07-29-asn1c-vn-design.md` §7, change the XER example from `<o>00AABB</o>` to the real space-separated form, and add a short note that the implemented oracle compares scalar sequences plus a well-formedness scan, with the reason. Keep the spec honest about what was built.
+In `docs/design/01-encoder.md` §7, change the XER example from `<o>00AABB</o>` to the real space-separated form, and add a short note that the implemented oracle compares scalar sequences plus a well-formedness scan, with the reason. Keep the spec honest about what was built.
 
 - [ ] **Step 5: Run the full suite once more**
 
