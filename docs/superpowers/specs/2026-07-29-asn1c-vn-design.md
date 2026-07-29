@@ -182,8 +182,13 @@ cannot appear in a cstring — X.680 provides the character-defs form for those,
 not implement; they are an error by default, emitted raw under `VN_F_LENIENT`.
 
 **Absent and default values.** An unset OPTIONAL member is omitted; ANNOTATED may note
-`-- absent`. Members carrying their DEFAULT value are always emitted, since suppressing them
-would require comparing against the default and buys nothing.
+`-- absent`.
+
+> **Corrected during implementation.** This section originally claimed that members carrying
+> their DEFAULT value are always emitted. That is not implementable against this ABI: asn1c
+> represents a DEFAULT member as a pointer, so an unset one is indistinguishable at runtime
+> from an absent OPTIONAL member and is omitted. A DEFAULT member holding an explicit value
+> is emitted normally. Recorded in the README under "Deviations from X.680".
 
 **SET OF** element order is preserved as decoded, never re-sorted.
 
@@ -250,13 +255,21 @@ Pure C, no Python. Four layers, in increasing strength:
    | --- | --- |
    | `<b><true/></b>` | `b TRUE` |
    | `<c><green/></c>` | `c green` |
-   | `<o>00AABB</o>` | `o '00AABB'H` |
+   | `<o>FF FF 4C</o>` | `o 'FFFF4C'H` |
    | `<oid>2.23.143.1</oid>` | `oid { 2 23 143 1 }` |
 
    asn1c's XER encoder is well-exercised and shares no code with ours, which is what makes
    it an independent oracle. The normaliser **fails on any scalar shape it does not
    recognise** rather than skipping it; otherwise the comparison table becomes the place
    where bugs hide.
+
+> **Corrected during implementation.** Two things here were wrong. First, asn1c writes
+> OCTET STRING hex as space-separated pairs wrapped across lines, not the contiguous
+> `00AABB` shown originally. Second, comparing **(path, scalar) pairs** is not achievable
+> without schema knowledge, because XER names SEQUENCE OF elements by their type while value
+> notation gives them no name at all. What was built compares ordered **scalar sequences**
+> plus an independent well-formedness scan; see the plan's deviation note and the README's
+> Testing section for exactly what that does and does not cover.
 
    asn1c is not usable as a syntax oracle, incidentally: its own parser treats value
    assignment bodies as opaque and accepts `<<<BROKEN>>>`, unknown field names and `'ZZ'H`
