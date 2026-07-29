@@ -1,0 +1,74 @@
+# Builds asn1c from source, then runs the encoder's test suite against it.
+#
+# asn1c is pinned to the same version the encoder's type dispatch depends on;
+# see README "ABI pinning". A failure here on one platform but not the other is
+# most likely the -D_DARWIN_C_SOURCE guard in the Makefile.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out asn1c-vn
+        uses: actions/checkout@v4
+        with:
+          path: asn1c-vn
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool bison flex
+
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install autoconf automake libtool bison flex
+
+      - name: Check out asn1c
+        uses: actions/checkout@v4
+        with:
+          repository: vlm/asn1c
+          ref: v0.9.29
+          path: asn1c
+
+      - name: Cache the asn1c build
+        id: asn1c-cache
+        uses: actions/cache@v4
+        with:
+          path: asn1c-install
+          key: asn1c-v0.9.29-${{ matrix.os }}
+
+      - name: Build and install asn1c
+        if: steps.asn1c-cache.outputs.cache-hit != 'true'
+        working-directory: asn1c
+        run: |
+          # Homebrew's bison and flex are keg-only, so put them first.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
+          fi
+          test -f configure || autoreconf -iv
+          ./configure --prefix="$GITHUB_WORKSPACE/asn1c-install"
+          make -j2
+          make install
+
+      - name: Run the test suite
+        working-directory: asn1c-vn
+        run: |
+          export PATH="$GITHUB_WORKSPACE/asn1c-install/bin:$PATH"
+          asn1c -v || true
+          make check
+
+      - name: Run a longer property-based campaign
+        working-directory: asn1c-vn
+        run: |
+          export PATH="$GITHUB_WORKSPACE/asn1c-install/bin:$PATH"
+          ./tests/bin/t_xercheck 20000
