@@ -58,9 +58,10 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 # ---- tests ----------------------------------------------------------------
 
 SCHEMAS := prim
-TESTS   := t_link
+TESTS   := t_link t_writer
 
-t_link_SCHEMA := prim
+t_link_SCHEMA   := prim
+t_writer_SCHEMA := prim
 
 # asn1c writes into the current directory, so generate inside the target.
 tests/gen/%/.stamp: tests/schemas/%.asn1
