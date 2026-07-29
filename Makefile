@@ -139,7 +139,90 @@ check: check-skeldir $(addprefix tests/bin/,$(TESTS))
 	    ./$$t || rc=1; \
 	done; exit $$rc
 
+# ---- comparison against another tool's output ------------------------------
+#
+# Diffs our output against reference value notation produced by a different
+# implementation. REFDIR holds <name>.der files next to <name>.txt (or .vn/.val)
+# references. Uses -A so we emit value assignments, the form reference tooling
+# uses, making the comparison a direct diff.
+#
+# Exact agreement is not reachable yet: asn1c discards DEFAULT values for
+# buffer-backed types and INTEGER named numbers, so a reference tool that reads
+# the schema prints information we cannot recover. See README "Deviations from
+# X.680". The recorded baseline therefore guards against regression rather than
+# asserting equality.
+
+REFDIR   ?=
+BASELINE := tests/reference-baseline.txt
+
+# Aim the property-based cross-check at a real-world schema instead of the
+# kitchen-sink one. Far more type combinations, nesting depth and string types
+# than a hand-written test schema reaches.
+#   make check-xer GEN_DIR=<gen> PDU=<Type> [ROUNDS=20000]
+ROUNDS ?= 5000
+
+check-xer: check-skeldir
+	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
+	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
+	@test -n "$(strip $(GEN_SRCS))" || { \
+	    echo "no *.c files in GEN_DIR=$(GEN_DIR)" >&2; exit 1; }
+	@mkdir -p build/gen tests/bin
+	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
+	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
+	$(CC) $(ALL_CFLAGS) -Itests -idirafter $(GEN_DIR) -DPDU=$(PDU) \
+	    tests/t_xercheck.c $(TEST_SUPPORT) $(VN_SRCS) build/gen/*.o \
+	    -o tests/bin/t_xercheck_ext -lm
+	@# DERDIR drives the check from real encodings. asn_random_fill cannot be
+	@# used on every schema: constr_SET_OF.c:1329 calls random_fill without a
+	@# NULL check and neither ANY nor OPEN_TYPE provides one, so a
+	@# SEQUENCE OF ANY crashes inside asn1c.
+	@if [ -n "$(DERDIR)" ]; then \
+	    set -- "$(DERDIR)"/*.der; \
+	    [ -f "$$1" ] || { echo "no *.der in DERDIR=$(DERDIR)" >&2; exit 1; }; \
+	    ./tests/bin/t_xercheck_ext "$$@"; \
+	else \
+	    ./tests/bin/t_xercheck_ext $(ROUNDS); \
+	fi
+
+check-reference: asn1vn
+	@test -n "$(REFDIR)" || { \
+	    echo "set REFDIR=<dir with .der files and reference .txt files>" >&2; \
+	    exit 1; }
+	@tmp=$$(mktemp -d); rc=0; : > "$$tmp/now"; \
+	for der in "$(REFDIR)"/*.der; do \
+	    [ -f "$$der" ] || continue; \
+	    base=$${der%.der}; ref=""; \
+	    for ext in txt vn val; do \
+	        [ -f "$$base.$$ext" ] && ref="$$base.$$ext" && break; \
+	    done; \
+	    [ -n "$$ref" ] || { echo "SKIP $$(basename "$$base"): no reference file"; continue; }; \
+	    ./asn1vn -A -c < "$$der" | sed '/^[[:space:]]*$$/d' > "$$tmp/ours" || { \
+	        echo "FAIL $$(basename "$$base"): encoding failed"; rc=1; continue; }; \
+	    tr -d '\r' < "$$ref" | sed '/^[[:space:]]*$$/d' > "$$tmp/ref"; \
+	    n=$$(diff "$$tmp/ref" "$$tmp/ours" | grep -c '^[<>]' || true); \
+	    total=$$(wc -l < "$$tmp/ref" | tr -d ' '); \
+	    printf '%s\t%s\n' "$$(basename "$$base")" "$$n" >> "$$tmp/now"; \
+	    if [ "$$n" -eq 0 ]; then echo "PASS $$(basename "$$base") ($$total lines)"; \
+	    else echo "DIFF $$(basename "$$base"): $$n of $$total lines"; fi; \
+	done; \
+	if [ -f "$(BASELINE)" ]; then \
+	    while IFS="$$(printf '\t')" read -r name was; do \
+	        [ -n "$$name" ] || continue; \
+	        now=$$(awk -F'\t' -v n="$$name" '$$1==n{print $$2}' "$$tmp/now"); \
+	        [ -n "$$now" ] || continue; \
+	        if [ "$$now" -gt "$$was" ]; then \
+	            echo "REGRESSION $$name: $$was -> $$now differing lines" >&2; rc=1; \
+	        elif [ "$$now" -lt "$$was" ]; then \
+	            echo "IMPROVED $$name: $$was -> $$now; update $(BASELINE)"; \
+	        fi; \
+	    done < "$(BASELINE)"; \
+	else \
+	    cp "$$tmp/now" "$(BASELINE)"; \
+	    echo "wrote $(BASELINE); review it, then commit"; \
+	fi; \
+	rm -rf "$$tmp"; exit $$rc
+
 clean:
 	rm -rf tests/bin tests/gen build libvn.a asn1vn $(VN_OBJS)
 
-.PHONY: check clean check-skeldir
+.PHONY: check clean check-skeldir check-reference

@@ -21,10 +21,12 @@ extern asn_TYPE_descriptor_t VN_PDU_DEF;
 static void
 usage(const char *argv0) {
     fprintf(stderr,
-            "usage: %s [-c|-a] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der\n"
+            "usage: %s [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der\n"
             "\n"
             "  -c        canonical output: deterministic, for diffing\n"
             "  -a        annotated output: adds X.680 comments\n"
+            "  -A        emit value assignments: `valueN <Type> ::= <value>`,\n"
+            "            the form reference tooling uses, instead of bare values\n"
             "  -l WIDTH  wrap hex at WIDTH columns; 0 disables wrapping\n"
             "  -i WIDTH  indent width, default 4\n"
             "  -L        lenient: emit questionable values instead of failing\n"
@@ -40,7 +42,7 @@ main(int argc, char **argv) {
     size_t cap = 1 << 16, len = 0, n, offset, count = 0;
     void *st = 0;
     asn_dec_rval_t rv;
-    int i;
+    int i, assignments = 0;
 
     memset(&opts, 0, sizeof opts);
     opts.mode = VN_MODE_PRETTY;
@@ -56,6 +58,8 @@ main(int argc, char **argv) {
             opts.flags |= VN_F_LENIENT;
         } else if(!strcmp(argv[i], "-S")) {
             opts.flags |= VN_F_STRICT_ANY;
+        } else if(!strcmp(argv[i], "-A")) {
+            assignments = 1;
         } else if(!strcmp(argv[i], "-l") && i + 1 < argc) {
             opts.line_width = atoi(argv[++i]);
             if(opts.line_width == 0) opts.line_width = -1; /* 0 means default */
@@ -132,9 +136,20 @@ main(int argc, char **argv) {
             free(buf);
             return 1;
         }
-        if(opts.mode == VN_MODE_ANNOTATED
+        if(opts.mode == VN_MODE_ANNOTATED && !assignments
            && printf("-- value %lu at byte %lu --\n", (unsigned long)count + 1,
                      (unsigned long)offset)
+                  < 0) {
+            perror("write");
+            ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            free(buf);
+            return 1;
+        }
+        /* `valueN <Type> ::= ` -- a full X.680 value assignment, the form
+         * reference tooling emits, so its output can be diffed directly. */
+        if(assignments
+           && printf("value%lu %s ::= ", (unsigned long)count + 1,
+                     VN_PDU_DEF.name ? VN_PDU_DEF.name : "Value")
                   < 0) {
             perror("write");
             ASN_STRUCT_FREE(VN_PDU_DEF, st);

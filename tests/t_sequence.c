@@ -58,6 +58,8 @@ main(void) {
         n.inner.tag.size = sizeof tag;
         n.col = 1;
         out = vnt_encode(&asn_DEF_Nested, &n, 0, reason, sizeof reason);
+        /* `deflt` is absent from the value but carries DEFAULT 7, which asn1c
+         * retains, so it is reconstructed and emitted. */
         VNT_STREQ(out,
                   "{\n"
                   "    name 'DEAD'H,\n"
@@ -65,14 +67,12 @@ main(void) {
                   "        id 5,\n"
                   "        tag '01'H\n"
                   "    },\n"
-                  "    col green\n"
+                  "    col green,\n"
+                  "    deflt 7\n"
                   "}");
         free(out);
     }
 
-    /* A DEFAULT member holding an explicit value must be emitted. asn1c
-     * represents it as a pointer, so an unset one is indistinguishable from an
-     * absent OPTIONAL and is omitted; see README. */
     VNT_CASE("a DEFAULT member holding a value is emitted");
     {
         Nested_t n;
@@ -89,7 +89,30 @@ main(void) {
         free(out);
     }
 
-    VNT_CASE("an unset DEFAULT member is omitted");
+    /*
+     * An unset DEFAULT member is emitted with its default value, which asn1c
+     * retains for natively stored types via default_value_set. Printing it
+     * explicitly is valid X.680 and matches what reference tooling does.
+     */
+    VNT_CASE("an unset DEFAULT member is emitted with its default value");
+    {
+        Nested_t n;
+        const unsigned char tag[] = {0x01};
+        memset(&n, 0, sizeof n);
+        n.inner.id = 1;
+        n.inner.tag.buf = (uint8_t *)tag;
+        n.inner.tag.size = sizeof tag;
+        n.col = 0;
+        n.deflt = 0; /* absent in the decoded structure */
+        out = vnt_encode(&asn_DEF_Nested, &n, 0, reason, sizeof reason);
+        VNT_TRUE(out && strstr(out, "deflt 7") != 0);
+        /* It must be separated from its predecessor, not glued on. */
+        VNT_TRUE(out && strstr(out, "col red,") != 0);
+        free(out);
+    }
+
+    /* An absent OPTIONAL member has no default, so it stays omitted. */
+    VNT_CASE("an absent OPTIONAL member is still omitted");
     {
         Nested_t n;
         const unsigned char tag[] = {0x01};
@@ -99,7 +122,7 @@ main(void) {
         n.inner.tag.size = sizeof tag;
         n.col = 0;
         out = vnt_encode(&asn_DEF_Nested, &n, 0, reason, sizeof reason);
-        VNT_TRUE(out && strstr(out, "deflt") == 0);
+        VNT_TRUE(out && strstr(out, "opt") == 0);
         free(out);
     }
 

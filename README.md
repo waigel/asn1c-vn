@@ -203,14 +203,32 @@ Readability limits imposed by the runtime ABI, all of which still produce valid
 X.680:
 
 - **BIT STRING named bit lists** and **INTEGER named numbers** are not emitted,
-  because asn1c does not retain them. `Flags ::= BIT STRING { keyCert(0) }`
-  compiles to a descriptor pointing at the *generic* `asn_SPC_BIT_STRING_specs`,
-  and `Level ::= INTEGER { low(0) }` compiles to `0 /* No specifics */`. The
-  numeric and hex forms used instead are equally valid: `'0110'B` is as legal as
-  `{ keyCert, crlSign }`. ENUMERATED identifiers *are* retained, which matters
-  because there the identifier is the only legal form.
-- An **unset DEFAULT member is omitted.** asn1c represents DEFAULT as a pointer,
-  so at runtime it cannot be told apart from an absent OPTIONAL member.
+  because asn1c does not retain them *at runtime*. `Flags ::= BIT STRING
+  { keyCert(0) }` compiles to a descriptor pointing at the *generic*
+  `asn_SPC_BIT_STRING_specs`, and `Level ::= INTEGER { low(0) }` compiles to
+  `0 /* No specifics */`. The numeric and hex forms used instead are equally
+  valid: `'0110'B` is as legal as `{ keyCert, crlSign }`. ENUMERATED identifiers
+  *are* retained, which matters because there the identifier is the only legal
+  form.
+
+  The names do survive as C enums in the generated headers
+  (`PINKeyReferenceValue_pinAppl1 = 1`, `Flags_keyCert = 0`), so a future
+  annotation table could recover them from `GEN_DIR` without an ASN.1 parser.
+  Unlike the DEFAULT comments above, these are real declarations and are
+  trustworthy.
+- **DEFAULT values are emitted only for natively stored types.** asn1c keeps the
+  default of an INTEGER, BOOLEAN or ENUMERATED member as a setter on the member
+  (`default_value_set`), so an absent one is reconstructed and printed. For
+  buffer-backed types — OCTET STRING, BIT STRING, the string types — it discards
+  the value entirely: `lcsi [10] OCTET STRING (SIZE (1)) DEFAULT '05'H` compiles
+  to `0, 0, /* No default value */`, so nothing can be recovered and the member
+  stays omitted. A SEQUENCE OF default is likewise unavailable.
+
+  asn1c does leave the value in a comment in the generated header
+  (`OCTET_STRING_t *lcsi /* DEFAULT '05'HH */`), but those comments are not a
+  usable source: a long or oddly spaced literal in the schema makes asn1c's
+  comment emitter run past the end and corrupt the comments of neighbouring
+  members, silently.
 - **SET OF** elements are never reordered; the decoded order is preserved.
 
 ## Testing
@@ -244,6 +262,27 @@ are pinned by layers 1 and 2 and by the per-type tests instead.
 `asn_random_fill` also produces values asn1c's own XER encoder rejects, such as a
 CHOICE with `present = 0`. Those are not skipped: the two encoders are required to
 agree on whether a value is encodable at all.
+
+### Comparing against another implementation
+
+```sh
+make check-reference GEN_DIR=<gen> PDU=<Type> REFDIR=<dir>
+```
+
+`REFDIR` holds `<name>.der` files next to `<name>.txt` (or `.vn`/`.val`)
+references produced by a different tool. Our output is generated with `-A` so it
+carries value assignments, the form reference tooling uses, making the comparison
+a direct diff.
+
+Exact agreement is not reachable while the DEFAULT and named-number gaps above
+remain, so `tests/reference-baseline.txt` records the current differing-line count
+per file. The target fails on any increase and reports any decrease, which turns
+the remaining distance into a tracked number instead of a claim.
+
+Measured against the GSMA test profiles shipped with
+[euicc-profile-tool](https://github.com/waigel/euicc-profile-tool), every
+remaining difference is attributable to those two gaps; there is no case where
+this encoder emits a wrong value or loses a field that is present in the DER.
 
 ## Status
 

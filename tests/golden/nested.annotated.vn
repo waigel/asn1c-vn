@@ -5,6 +5,6 @@
         tag '0102'H
     },
     col blue,
-    opt 42
-    -- deflt absent --
+    opt 42,
+    deflt 7 -- DEFAULT --
 }

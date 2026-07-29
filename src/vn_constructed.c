@@ -41,10 +41,49 @@ vn_h_sequence(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
         const void *memb = vn_member_ptr(elm, sptr);
 
         if(!memb) {
-            /* Absent member: omit it. In annotated mode say so, but leave
-             * `emitted` alone -- a comment is not a value, so it must neither
-             * attract a comma of its own nor make the next real member think
-             * one is due. */
+            /*
+             * A member absent from the encoding may still have a DEFAULT value.
+             * asn1c retains it for natively stored types -- INTEGER, BOOLEAN,
+             * ENUMERATED -- as a setter on the member, so the value can be
+             * reconstructed and emitted. Printing it explicitly is valid X.680
+             * and matches what reference tooling does.
+             *
+             * For buffer-backed types (OCTET STRING, BIT STRING, strings) asn1c
+             * discards the default entirely, so nothing can be recovered and the
+             * member stays omitted. See README "Deviations from X.680".
+             */
+            if(elm->default_value_set) {
+                void *dflt = 0;
+                int rc;
+
+                if(elm->default_value_set(&dflt) != 0) {
+                    if(dflt) ASN_STRUCT_FREE(*elm->type, dflt);
+                    return vn_fail(w, td, sptr,
+                                   "cannot reconstruct the DEFAULT value of %s",
+                                   elm->name ? elm->name : "?");
+                }
+                rc = 0;
+                if(emitted && vn_putc(w, ',') < 0) rc = -1;
+                if(!rc && vn_break(w, level + 1) < 0) rc = -1;
+                if(!rc && elm->name && elm->name[0]) {
+                    if(vn_puts(w, elm->name) < 0) rc = -1;
+                    if(!rc && vn_putc(w, ' ') < 0) rc = -1;
+                }
+                if(!rc && vn_encode_value(w, elm->type, dflt, level + 1) < 0)
+                    rc = -1;
+                if(!rc && vn_is_annotated(w)) {
+                    if(vn_putc(w, ' ') < 0) rc = -1;
+                    if(!rc && vn_comment(w, "DEFAULT") < 0) rc = -1;
+                }
+                ASN_STRUCT_FREE(*elm->type, dflt);
+                if(rc < 0) return -1;
+                emitted = 1;
+                continue;
+            }
+
+            /* Nothing to emit. In annotated mode say so, but leave `emitted`
+             * alone -- a comment is not a value, so it must neither attract a
+             * comma of its own nor make the next real member expect one. */
             if(vn_is_annotated(w)) {
                 if(vn_break(w, level + 1) < 0) return -1;
                 if(vn_comment(w, "%s absent", elm->name ? elm->name : "?") < 0)

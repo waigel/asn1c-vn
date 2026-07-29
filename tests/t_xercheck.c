@@ -17,7 +17,19 @@
 #include "vntest.h"
 #include "vnscan.h"
 #include "xerscan.h"
-#include "Top.h"
+
+/*
+ * The root type is chosen at compile time so this same check can be aimed at a
+ * real-world schema, not only the kitchen-sink one. See `make check-xer`.
+ */
+#ifndef PDU
+#define PDU Top
+#endif
+#define VN_CAT_(a, b) a##b
+#define VN_CAT(a, b) VN_CAT_(a, b)
+#define VN_PDU_DEF VN_CAT(asn_DEF_, PDU)
+
+extern asn_TYPE_descriptor_t VN_PDU_DEF;
 
 #define MAX_SCALARS 512
 #define MAX_CANDS 8
@@ -56,8 +68,7 @@ xer_consume(const void *data, size_t size, void *key) {
  * What this gives up: this layer no longer checks the *position* of empty values
  * or of NULL. Both are pinned instead by t_sequence, t_collection, t_octet,
  * t_strings and the golden files, which assert exact output.
- */
-/*
+ *
  * The two dialects spell "empty" differently, and the predicates must not be
  * conflated. On the XER side only genuinely empty content is empty; the text
  * `""` there is a string whose value is two quote characters. On the value
@@ -117,10 +128,10 @@ compare_one(const void *sptr, int iteration) {
     int xer_ok, ok = 1;
 
     memset(&xer, 0, sizeof xer);
-    xer_ok = xer_encode(&asn_DEF_Top, sptr, XER_F_BASIC, xer_consume, &xer)
+    xer_ok = xer_encode(&VN_PDU_DEF, sptr, XER_F_BASIC, xer_consume, &xer)
                  .encoded
              >= 0;
-    vn = vnt_encode(&asn_DEF_Top, sptr, 0, reason, sizeof reason);
+    vn = vnt_encode(&VN_PDU_DEF, sptr, 0, reason, sizeof reason);
 
     if(!xer_ok) {
         /* asn1c cannot encode this value, so it is no basis for comparison.
@@ -194,24 +205,107 @@ compare_one(const void *sptr, int iteration) {
     return ok ? CMP_BOTH_OK : CMP_MISMATCH;
 }
 
+/*
+ * Drive the comparison from a real DER file instead of generated values.
+ *
+ * asn_random_fill cannot be used on every schema: constr_SET_OF.c:1329 calls
+ * elm->type->op->random_fill without a NULL check, and neither ANY nor
+ * OPEN_TYPE implements it, so a SEQUENCE OF ANY crashes inside asn1c. Real
+ * encodings also carry realistic values, which random filling does not.
+ *
+ * Decodes every value in the file, as concatenated PDUs are common.
+ */
+static int
+compare_der_file(const char *path, int *values, int *compared, int *refused) {
+    FILE *f = fopen(path, "rb");
+    unsigned char *buf;
+    long size;
+    size_t offset;
+    int rc = 0;
+
+    if(!f) {
+        fprintf(stderr, "FAIL: cannot open %s\n", path);
+        vnt_failures++;
+        return -1;
+    }
+    fseek(f, 0, SEEK_END);
+    size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if(size <= 0) {
+        fclose(f);
+        fprintf(stderr, "FAIL: %s is empty\n", path);
+        vnt_failures++;
+        return -1;
+    }
+    buf = (unsigned char *)malloc((size_t)size);
+    if(!buf || fread(buf, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        free(buf);
+        fprintf(stderr, "FAIL: cannot read %s\n", path);
+        vnt_failures++;
+        return -1;
+    }
+    fclose(f);
+
+    for(offset = 0; offset < (size_t)size;) {
+        void *st = 0;
+        asn_dec_rval_t dv =
+            asn_decode(0, ATS_BER, &VN_PDU_DEF, &st, buf + offset,
+                       (size_t)size - offset);
+        if(dv.code != RC_OK || dv.consumed == 0) {
+            fprintf(stderr, "FAIL: %s: decode failed at byte %lu\n", path,
+                    (unsigned long)offset);
+            vnt_failures++;
+            if(st) ASN_STRUCT_FREE(VN_PDU_DEF, st);
+            rc = -1;
+            break;
+        }
+        (*values)++;
+        switch(compare_one(st, (int)offset)) {
+        case CMP_BOTH_OK:      (*compared)++; break;
+        case CMP_BOTH_REFUSED: (*refused)++;  break;
+        case CMP_MISMATCH:     rc = -1;       break;
+        }
+        ASN_STRUCT_FREE(VN_PDU_DEF, st);
+        offset += dv.consumed;
+    }
+
+    free(buf);
+    return rc;
+}
+
 int
 main(int argc, char **argv) {
     int rounds = argc > 1 ? atoi(argv[1]) : 400;
     int i, built = 0, compared = 0, refused = 0;
+
+    /* Any non-numeric argument is taken as a DER file to drive the comparison. */
+    if(argc > 1 && atoi(argv[1]) == 0) {
+        int values = 0;
+        VNT_CASE("real encodings agree with asn1c's XER");
+        for(i = 1; i < argc; i++) compare_der_file(argv[i], &values, &compared,
+                                                   &refused);
+        printf("t_xercheck: %d value(s) from %d file(s), %d compared, %d "
+               "refused by both\n",
+               values, argc - 1, compared, refused);
+        VNT_CASE("the files yielded values at all");
+        VNT_TRUE(values > 0);
+        return vnt_report("t_xercheck(der)");
+    }
 
     VNT_CASE("random values agree with asn1c's XER");
     for(i = 0; i < rounds; i++) {
         void *st = 0;
         /* Vary the budget so both tiny and deeply nested values occur. */
         size_t budget = 16 + (size_t)(i % 112);
-        if(asn_random_fill(&asn_DEF_Top, &st, budget) != ARFILL_OK) continue;
+        if(asn_random_fill(&VN_PDU_DEF, &st, budget) != ARFILL_OK) continue;
         built++;
         switch(compare_one(st, i)) {
         case CMP_BOTH_OK:      compared++; break;
         case CMP_BOTH_REFUSED: refused++;  break;
         case CMP_MISMATCH:                 break;
         }
-        ASN_STRUCT_FREE(asn_DEF_Top, st);
+        ASN_STRUCT_FREE(VN_PDU_DEF, st);
     }
 
     printf("t_xercheck: %d built, %d compared, %d refused by both\n", built,
