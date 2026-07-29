@@ -130,3 +130,49 @@ RELATIVE_OID_get_arcs(const RELATIVE_OID_t *roid, asn_oid_arc_t *arcs,
 #include <vn_encoder.h>
 
 __attribute__((weak)) const vn_annotations_t vn_generated_annotations = { 0, 0 };
+
+/* Skeleton functions and descriptors the reader needs, same reasoning as above:
+ * a generated directory only contains what its schema uses. */
+
+#include <asn_SET_OF.h>
+
+__attribute__((weak)) int
+asn_set_add(void *asn_set_of_x, void *ptr) {
+    (void)asn_set_of_x;
+    (void)ptr;
+    return -1;
+}
+
+__attribute__((weak)) int
+asn_long2INTEGER(INTEGER_t *i, long l) {
+    (void)i;
+    (void)l;
+    return -1;
+}
+
+__attribute__((weak)) int
+asn_INTEGER2ulong(const INTEGER_t *i, unsigned long *l) {
+    (void)i;
+    (void)l;
+    return -1;
+}
+
+__attribute__((weak)) int
+OBJECT_IDENTIFIER_set_arcs(OBJECT_IDENTIFIER_t *oid, const asn_oid_arc_t *arcs,
+                           size_t arc_slots) {
+    (void)oid;
+    (void)arcs;
+    (void)arc_slots;
+    return -1;
+}
+
+__attribute__((weak)) int
+RELATIVE_OID_set_arcs(RELATIVE_OID_t *roid, const asn_oid_arc_t *arcs,
+                      size_t arcs_count) {
+    (void)roid;
+    (void)arcs;
+    (void)arcs_count;
+    return -1;
+}
+
+__attribute__((weak)) asn_TYPE_descriptor_t asn_DEF_INTEGER;

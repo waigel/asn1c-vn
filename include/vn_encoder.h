@@ -84,6 +84,50 @@ asn_enc_rval_t vn_encode(const asn_TYPE_descriptor_t *td, const void *sptr,
 int vn_fprint(FILE *stream, const asn_TYPE_descriptor_t *td, const void *sptr,
               const vn_options_t *opts);
 
+/* --- reading ------------------------------------------------------------- */
+
+#define VN_RF_LENIENT 0x01u /* accept questionable input instead of failing */
+/*
+ * The buffer holds all the input there will be.
+ *
+ * Without this, a bare token at the end of the buffer is ambiguous: `TRUE` could
+ * be complete or could be the start of a longer identifier arriving in the next
+ * chunk, so the reader must ask for more and would never finish. Callers that
+ * hold the whole text -- the normal case -- set this; one feeding a stream sets
+ * it only on the final presentation.
+ */
+#define VN_RF_EOF     0x02u
+
+typedef struct vn_read_options_s {
+    unsigned                flags;
+    const vn_annotations_t *annotations; /* needed for identifier input */
+    char                   *errbuf;      /* optional; reason plus position */
+    size_t                  errlen;
+} vn_read_options_t;
+
+/*
+ * Parse one ASN.1 value in value notation into *struct_ptr, an instance of *td.
+ *
+ * Shaped like asn1c's xer_type_decoder_f, minus its opt_mname: value notation has
+ * no element wrapper around a value. Exactly one value is consumed; anything
+ * after it is the caller's business, and rval.consumed says where it ended.
+ *
+ * Restartability follows asn1c's own contract, which is only partial:
+ *   - Constructed types resume byte-exactly, keeping progress in the target
+ *     structure's _asn_ctx.
+ *   - A primitive has nowhere to keep state, so on RC_WMORE it reports the
+ *     position at which its value began; the caller re-presents from there.
+ *   - A single token must be complete within one presentation. A 10 KB hstring
+ *     needs a 10 KB buffer. asn1c's XER decoder behaves the same way.
+ *
+ * *struct_ptr belongs to the caller after RC_WMORE and after RC_FAIL alike;
+ * release it with ASN_STRUCT_FREE.
+ */
+asn_dec_rval_t vn_decode(const asn_codec_ctx_t *opt_codec_ctx,
+                         const asn_TYPE_descriptor_t *td, void **struct_ptr,
+                         const vn_read_options_t *opts, const void *buf,
+                         size_t size);
+
 #ifdef __cplusplus
 }
 #endif

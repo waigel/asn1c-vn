@@ -16,6 +16,7 @@ SKELDIR ?= $(shell d=$$(command -v $(ASN1C) 2>/dev/null) && \
                    cd "$$(dirname "$$d")/../share/asn1c" 2>/dev/null && pwd)
 
 VN_SRCS := src/vn_writer.c src/vn_encoder.c src/vn_optabs.c \
+           src/vn_token.c src/vn_reader.c src/vn_rd_constructed.c \
            src/vn_primitive.c src/vn_constructed.c
 VN_OBJS := $(VN_SRCS:.c=.o)
 VN_INC  := -Iinclude -Isrc
@@ -95,7 +96,7 @@ vn-annotate: tools/vn-annotate.c
 # ---- tests ----------------------------------------------------------------
 
 SCHEMAS := prim constructed strings opentype kitchen
-TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate
+TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate t_roundtrip
 
 t_link_SCHEMA   := prim
 t_writer_SCHEMA := prim
@@ -112,6 +113,7 @@ t_golden_SCHEMA   := constructed
 t_xercheck_SCHEMA := kitchen
 t_norm_SCHEMA     := prim
 t_annotate_SCHEMA := prim
+t_roundtrip_SCHEMA := constructed
 
 # asn1c writes into the current directory, so generate inside the target.
 tests/gen/%/.stamp: tests/schemas/%.asn1
@@ -237,4 +239,21 @@ check-reference: asn1vn
 clean:
 	rm -rf tests/bin tests/gen build libvn.a asn1vn $(VN_OBJS)
 
-.PHONY: check clean check-skeldir check-reference
+.PHONY: check clean check-skeldir check-reference check-xer check-roundtrip
+
+# Round trip over real encodings: DER -> value notation -> DER, byte-compared.
+# The acceptance criterion for the codec, and it needs no external reference.
+#   make check-roundtrip GEN_DIR=<gen> PDU=<Type> DERDIR=<dir with *.der>
+check-roundtrip: check-skeldir
+	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
+	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
+	@test -n "$(DERDIR)"  || { echo "set DERDIR=<dir with *.der>" >&2; exit 1; }
+	@mkdir -p build/gen tests/bin
+	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
+	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
+	$(CC) $(ALL_CFLAGS) -Itests -idirafter $(GEN_DIR) -DRT_PDU=$(PDU) -DRT_EXTERNAL \
+	    tests/t_roundtrip.c $(TEST_SUPPORT) $(VN_SRCS) build/gen/*.o \
+	    -o tests/bin/t_roundtrip_ext -lm
+	@set -- "$(DERDIR)"/*.der; \
+	 [ -f "$$1" ] || { echo "no *.der in DERDIR=$(DERDIR)" >&2; exit 1; }; \
+	 ./tests/bin/t_roundtrip_ext "$$@"

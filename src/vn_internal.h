@@ -75,4 +75,80 @@ int vn_h_choice(vn_writer_t *, const asn_TYPE_descriptor_t *, const void *, int)
 int vn_h_open_type(vn_writer_t *, const asn_TYPE_descriptor_t *, const void *,
                    int);
 
+/* --- reading -------------------------------------------------------------- */
+
+typedef enum {
+    VT_END,        /* no more input in this buffer */
+    VT_INCOMPLETE, /* a token started but did not finish in this buffer */
+    VT_INVALID,    /* definitely not a token */
+    VT_LBRACE,
+    VT_RBRACE,
+    VT_COMMA,
+    VT_COLON,
+    VT_NUMBER,
+    VT_IDENT,
+    VT_CSTRING, /* body excludes the quotes; "" is still doubled */
+    VT_HSTRING, /* body excludes the quotes and the H */
+    VT_BSTRING
+} vn_token_e;
+
+typedef struct vn_token_s {
+    vn_token_e  kind;
+    const char *start; /* first byte of the token */
+    size_t      len;   /* whole token, quotes and suffix included */
+    const char *body;  /* content, for the value-bearing kinds */
+    size_t      body_len;
+} vn_token_t;
+
+/* vn_token.c */
+vn_token_e vn_token_next(const char *buf, size_t size, int eof, size_t *pos,
+                         vn_token_t *tok);
+int        vn_token_is(const vn_token_t *tok, const char *word);
+
+typedef enum {
+    VR_OK = 0,
+    VR_MORE = 1,  /* need more input; reader->resume says from where */
+    VR_FAIL = -1
+} vn_rd_result_e;
+
+typedef struct vn_reader_s {
+    const char             *buf;
+    size_t                  size;
+    size_t                  pos;    /* next unread byte */
+    size_t                  resume; /* where to re-present from on VR_MORE */
+    unsigned                flags;
+    const vn_annotations_t *annotations;
+    char                   *errbuf;
+    size_t                  errlen;
+    int                     eof;
+} vn_reader_t;
+
+/* vn_reader.c */
+int  vn_rd_fail(vn_reader_t *r, size_t at, const char *fmt, ...);
+int  vn_rd_more(vn_reader_t *r, size_t from);
+vn_token_e vn_rd_token(vn_reader_t *r, vn_token_t *tok);
+int  vn_rd_value(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr);
+void *vn_rd_alloc(vn_reader_t *r, void **sptr, size_t size);
+
+typedef int (*vn_rd_handler_f)(vn_reader_t *r, const asn_TYPE_descriptor_t *td,
+                               void **sptr);
+
+int vn_rd_boolean(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_null(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_integer(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_native_integer(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_enumerated(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_native_enumerated(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_octet_string(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_bit_string(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_oid(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_relative_oid(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_string(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_any(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+
+/* vn_rd_constructed.c */
+int vn_rd_sequence(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_set_of(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_choice(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+
 #endif /* VN_INTERNAL_H */
