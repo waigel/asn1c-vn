@@ -80,6 +80,101 @@ vn_h_octet_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
     return vn_put_hex(w, os->buf, os->buf ? os->size : 0, level);
 }
 
+/* Append one Unicode code point as UTF-8. */
+static int
+vn_put_utf8(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+            unsigned long cp) {
+    char b[4];
+
+    if(cp < 0x80) {
+        b[0] = (char)cp;
+        return vn_put(w, b, 1);
+    }
+    if(cp < 0x800) {
+        b[0] = (char)(0xc0 | (cp >> 6));
+        b[1] = (char)(0x80 | (cp & 0x3f));
+        return vn_put(w, b, 2);
+    }
+    if(cp < 0x10000) {
+        if(cp >= 0xd800 && cp <= 0xdfff)
+            return vn_fail(w, td, sptr,
+                           "code point U+%04lX is an unpaired surrogate", cp);
+        b[0] = (char)(0xe0 | (cp >> 12));
+        b[1] = (char)(0x80 | ((cp >> 6) & 0x3f));
+        b[2] = (char)(0x80 | (cp & 0x3f));
+        return vn_put(w, b, 3);
+    }
+    if(cp <= 0x10ffff) {
+        b[0] = (char)(0xf0 | (cp >> 18));
+        b[1] = (char)(0x80 | ((cp >> 12) & 0x3f));
+        b[2] = (char)(0x80 | ((cp >> 6) & 0x3f));
+        b[3] = (char)(0x80 | (cp & 0x3f));
+        return vn_put(w, b, 4);
+    }
+    return vn_fail(w, td, sptr, "code point U+%lX is outside Unicode", cp);
+}
+
+/*
+ * All restricted string types and both time types share one form: an X.680
+ * cstring. A literal quote is doubled (11.14). Control characters have no
+ * cstring representation -- X.680 provides a separate character-defs form for
+ * those, which this encoder does not implement -- so they fail unless
+ * VN_F_LENIENT is set.
+ */
+int
+vn_h_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+            int level) {
+    const OCTET_STRING_t *os = (const OCTET_STRING_t *)sptr;
+    const asn_OCTET_STRING_specifics_t *specs =
+        (const asn_OCTET_STRING_specifics_t *)td->specifics;
+    enum asn_OS_Subvariant sub = specs ? specs->subvariant : ASN_OSUBV_STR;
+    size_t i, len = os->buf ? os->size : 0;
+
+    (void)level;
+    if(vn_putc(w, '"') < 0) return -1;
+
+    if(sub == ASN_OSUBV_U16) { /* BMPString: UTF-16BE */
+        if(len % 2)
+            return vn_fail(w, td, sptr,
+                           "BMPString length %u is not a multiple of 2",
+                           (unsigned)len);
+        for(i = 0; i < len; i += 2) {
+            unsigned long cp =
+                ((unsigned long)os->buf[i] << 8) | os->buf[i + 1];
+            if(cp == '"' && vn_putc(w, '"') < 0) return -1;
+            if(vn_put_utf8(w, td, sptr, cp) < 0) return -1;
+        }
+    } else if(sub == ASN_OSUBV_U32) { /* UniversalString: UTF-32BE */
+        if(len % 4)
+            return vn_fail(w, td, sptr,
+                           "UniversalString length %u is not a multiple of 4",
+                           (unsigned)len);
+        for(i = 0; i < len; i += 4) {
+            unsigned long cp = ((unsigned long)os->buf[i] << 24)
+                             | ((unsigned long)os->buf[i + 1] << 16)
+                             | ((unsigned long)os->buf[i + 2] << 8)
+                             | os->buf[i + 3];
+            if(cp == '"' && vn_putc(w, '"') < 0) return -1;
+            if(vn_put_utf8(w, td, sptr, cp) < 0) return -1;
+        }
+    } else {
+        for(i = 0; i < len; i++) {
+            unsigned char c = os->buf[i];
+            /* Reject C0 and DEL. UTF-8 continuation bytes are >= 0x80, so
+             * multibyte text passes through untouched. */
+            if((c < 0x20 || c == 0x7f) && !(w->flags & VN_F_LENIENT))
+                return vn_fail(w, td, sptr,
+                               "%s contains control character 0x%02X at offset "
+                               "%u, which has no cstring form in X.680",
+                               td->name ? td->name : "string", c, (unsigned)i);
+            if(c == '"' && vn_putc(w, '"') < 0) return -1;
+            if(vn_putc(w, (char)c) < 0) return -1;
+        }
+    }
+
+    return vn_putc(w, '"');
+}
+
 /*
  * BIT STRING. X.680 allows bstring and hstring; an hstring carries exactly four
  * bits per digit, so it is only usable when the bit count divides by four.

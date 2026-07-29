@@ -1,0 +1,21 @@
+-- strings.asn1: every restricted string type plus the two time types.
+Strings DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+AllStrings ::= SEQUENCE {
+    utf8      UTF8String,
+    ia5       IA5String,
+    printable PrintableString,
+    numeric   NumericString,
+    visible   VisibleString,
+    general   GeneralString,
+    graphic   GraphicString,
+    teletex   TeletexString,
+    videotex  VideotexString,
+    bmp       BMPString,
+    universal UniversalString,
+    objdesc   ObjectDescriptor,
+    gtime     GeneralizedTime,
+    utime     UTCTime
+}
+
+END

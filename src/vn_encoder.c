@@ -68,7 +68,24 @@ static const struct vn_dispatch_s {
     { &asn_OP_CHOICE,           vn_h_choice             },
     { &asn_OP_BIT_STRING,       vn_h_bit_string         },
     { &asn_OP_OBJECT_IDENTIFIER, vn_h_oid               },
-    { &asn_OP_RELATIVE_OID,     vn_h_relative_oid       }
+    { &asn_OP_RELATIVE_OID,     vn_h_relative_oid       },
+    /* Every restricted string type, plus the two time types, share one form. */
+    { &asn_OP_UTF8String,       vn_h_string             },
+    { &asn_OP_IA5String,        vn_h_string             },
+    { &asn_OP_PrintableString,  vn_h_string             },
+    { &asn_OP_NumericString,    vn_h_string             },
+    { &asn_OP_VisibleString,    vn_h_string             },
+    { &asn_OP_ISO646String,     vn_h_string             },
+    { &asn_OP_GeneralString,    vn_h_string             },
+    { &asn_OP_GraphicString,    vn_h_string             },
+    { &asn_OP_TeletexString,    vn_h_string             },
+    { &asn_OP_T61String,        vn_h_string             },
+    { &asn_OP_VideotexString,   vn_h_string             },
+    { &asn_OP_BMPString,        vn_h_string             },
+    { &asn_OP_UniversalString,  vn_h_string             },
+    { &asn_OP_ObjectDescriptor, vn_h_string             },
+    { &asn_OP_GeneralizedTime,  vn_h_string             },
+    { &asn_OP_UTCTime,          vn_h_string             }
 };
 
 int
