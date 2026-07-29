@@ -1,0 +1,42 @@
+-- constructed.asn1: composite types.
+Constructed DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+Colour ::= ENUMERATED { red(0), green(1), blue(2) }
+
+Inner ::= SEQUENCE {
+    id   INTEGER,
+    tag  OCTET STRING
+}
+
+Pair ::= SEQUENCE {
+    first  INTEGER,
+    second BOOLEAN OPTIONAL
+}
+
+Nested ::= SEQUENCE {
+    name  OCTET STRING,
+    inner Inner,
+    col   Colour,
+    opt   INTEGER OPTIONAL,
+    deflt INTEGER DEFAULT 7
+}
+
+Empty ::= SEQUENCE { }
+
+Numbers ::= SEQUENCE OF INTEGER
+Inners  ::= SEQUENCE OF Inner
+Bag     ::= SET OF INTEGER
+
+Choice ::= CHOICE {
+    nothing NULL,
+    flag    BOOLEAN,
+    inner   Inner
+}
+
+Wrapper ::= SEQUENCE {
+    pick    Choice,
+    numbers Numbers,
+    inners  Inners
+}
+
+END
