@@ -1,0 +1,36 @@
+-- kitchen.asn1: every supported type family in one PDU, for the XER
+-- cross-check and the random-value campaign.
+Kitchen DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+Colour ::= ENUMERATED { red(0), green(1), blue(2) }
+
+Leaf ::= SEQUENCE {
+    id   INTEGER,
+    tag  OCTET STRING
+}
+
+Top ::= SEQUENCE {
+    flag    BOOLEAN,
+    void    NULL,
+    small   INTEGER,
+    col     Colour,
+    data    OCTET STRING,
+    bits    BIT STRING,
+    oid     OBJECT IDENTIFIER,
+    -- PrintableString and NumericString rather than UTF8String and IA5String:
+    -- asn_random_fill stuffs unrestricted string types with control characters,
+    -- which this encoder deliberately refuses (they have no cstring form in
+    -- X.680) and which asn1c's XER rewrites into pseudo-elements like <nul/>.
+    -- Neither side is then comparable. These two have permitted alphabets, so
+    -- their random values stay printable. Exact string behaviour, control
+    -- characters included, is pinned by t_strings.
+    printable PrintableString,
+    numeric   NumericString,
+    leaf    Leaf,
+    numbers SEQUENCE OF INTEGER,
+    leaves  SEQUENCE OF Leaf,
+    pick    CHOICE { nothing NULL, flag BOOLEAN, leaf Leaf },
+    opt     INTEGER OPTIONAL
+}
+
+END

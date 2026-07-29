@@ -57,8 +57,8 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 
 # ---- tests ----------------------------------------------------------------
 
-SCHEMAS := prim constructed strings opentype
-TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden
+SCHEMAS := prim constructed strings opentype kitchen
+TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm
 
 t_link_SCHEMA   := prim
 t_writer_SCHEMA := prim
@@ -72,6 +72,8 @@ t_strings_SCHEMA  := strings
 t_opentype_SCHEMA := opentype
 t_scan_SCHEMA     := prim
 t_golden_SCHEMA   := constructed
+t_xercheck_SCHEMA := kitchen
+t_norm_SCHEMA     := prim
 
 # asn1c writes into the current directory, so generate inside the target.
 tests/gen/%/.stamp: tests/schemas/%.asn1
@@ -94,7 +96,7 @@ tests/gen/%/.built: tests/gen/%/.stamp
 	cd tests/gen/$* && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w -I. -c *.c
 	touch $@
 
-TEST_SUPPORT := tests/vntest.c tests/vnscan.c
+TEST_SUPPORT := tests/vntest.c tests/vnscan.c tests/xerscan.c
 
 define TEST_RULE
 tests/bin/$(1): tests/$(1).c $$(TEST_SUPPORT) $$(VN_SRCS) \

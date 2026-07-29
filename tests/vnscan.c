@@ -100,8 +100,13 @@ vs_tokenize(const char *text, vs_toks *ts, char *err, size_t errlen) {
         if(*p == ':') { if(!vs_push(ts, T_COLON,  p, 1, err, errlen)) return 0; p++; continue; }
 
         if(*p == '"') {
-            char buf[4096];
-            size_t n = 0;
+            /*
+             * Keep the surrounding quotes in the token. They are what lets the
+             * normaliser tell a string from an arc list: a PrintableString of
+             * `"34 9"` and an OBJECT IDENTIFIER of `{ 34 9 }` would otherwise
+             * both arrive as the bare text `34 9`.
+             */
+            const char *start = p;
             p++;
             for(;;) {
                 if(!*p) {
@@ -110,17 +115,16 @@ vs_tokenize(const char *text, vs_toks *ts, char *err, size_t errlen) {
                 }
                 if(*p == '"') {
                     if(p[1] == '"') { /* an escaped quote */
-                        if(n < sizeof buf) buf[n++] = '"';
                         p += 2;
                         continue;
                     }
                     p++;
                     break;
                 }
-                if(n < sizeof buf) buf[n++] = *p;
                 p++;
             }
-            if(!vs_push(ts, T_CSTRING, buf, n, err, errlen)) return 0;
+            if(!vs_push(ts, T_CSTRING, start, (size_t)(p - start), err, errlen))
+                return 0;
             continue;
         }
 

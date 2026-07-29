@@ -74,7 +74,7 @@ main(void) {
             VNT_STREQ(vals[0], "1");
             VNT_STREQ(vals[1], "TRUE");
             VNT_STREQ(vals[2], "'0A'H");
-            VNT_STREQ(vals[3], "x"); /* cstrings arrive unquoted */
+            VNT_STREQ(vals[3], "\"x\""); /* cstrings keep their quotes */
         }
         for(i = 0; i < n; i++) free(vals[i]);
     }
