@@ -11,6 +11,7 @@
 #include <NULL.h>
 #include <NativeEnumerated.h>
 #include <NativeInteger.h>
+#include <ANY.h>
 #include <BIT_STRING.h>
 #include <OBJECT_IDENTIFIER.h>
 #include <OCTET_STRING.h>
@@ -78,6 +79,36 @@ vn_h_octet_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
     const OCTET_STRING_t *os = (const OCTET_STRING_t *)sptr;
     (void)td;
     return vn_put_hex(w, os->buf, os->buf ? os->size : 0, level);
+}
+
+/*
+ * A bare ANY carries no type information at runtime: asn1c compiles it to an
+ * OCTET STRING with subvariant ASN_OSUBV_ANY, so the type of the value inside
+ * is simply unknown and no correct value notation exists for it.
+ *
+ * Emitting hex is this encoder's single deliberate departure from X.680; see
+ * README "Deviations from X.680". VN_F_STRICT_ANY turns it into an error, and
+ * annotated mode labels it. Table-constrained open types are unaffected -- they
+ * resolve to a real descriptor and go through vn_h_open_type instead.
+ */
+int
+vn_h_any(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+         int level) {
+    const ANY_t *any = (const ANY_t *)sptr;
+    size_t len = any->buf ? any->size : 0;
+
+    if(w->flags & VN_F_STRICT_ANY)
+        return vn_fail(w, td, sptr,
+                       "bare ANY cannot be rendered as value notation: the "
+                       "runtime carries no type information for it");
+
+    if(vn_put_hex(w, any->buf, len, level) < 0) return -1;
+    if(vn_is_annotated(w)) {
+        if(vn_putc(w, ' ') < 0) return -1;
+        return vn_comment(w, "bare ANY, %u octets, not X.680 value notation",
+                          (unsigned)len);
+    }
+    return 0;
 }
 
 /* Append one Unicode code point as UTF-8. */

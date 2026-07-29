@@ -85,7 +85,9 @@ static const struct vn_dispatch_s {
     { &asn_OP_UniversalString,  vn_h_string             },
     { &asn_OP_ObjectDescriptor, vn_h_string             },
     { &asn_OP_GeneralizedTime,  vn_h_string             },
-    { &asn_OP_UTCTime,          vn_h_string             }
+    { &asn_OP_UTCTime,          vn_h_string             },
+    { &asn_OP_ANY,              vn_h_any                },
+    { &asn_OP_OPEN_TYPE,        vn_h_open_type          }
 };
 
 int

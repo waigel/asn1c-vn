@@ -5,6 +5,7 @@
  * through vn_encode_value() rather than knowing their members' syntax.
  */
 
+#include <OPEN_TYPE.h>
 #include <asn_SET_OF.h>
 #include <constr_CHOICE.h>
 #include <constr_SEQUENCE.h>
@@ -156,4 +157,17 @@ vn_h_choice(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
         if(vn_puts(w, " : ") < 0) return -1;
     }
     return vn_encode_value(w, elm->type, memb, level);
+}
+
+/*
+ * A table-constrained open type resolves to a concrete descriptor: asn1c stores
+ * the decoded value under the selected alternative and gives the descriptor an
+ * asn_CHOICE_specifics_t, so the CHOICE handler applies unchanged. Verified
+ * against the generated Msg.c, where the open type member's descriptor pairs
+ * &asn_OP_OPEN_TYPE with asn_SPC_body_specs.
+ */
+int
+vn_h_open_type(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
+               const void *sptr, int level) {
+    return vn_h_choice(w, td, sptr, level);
 }

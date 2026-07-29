@@ -1,0 +1,30 @@
+-- opentype.asn1: a table-constrained open type next to a bare ANY.
+--
+-- The two are very different at runtime: the open type resolves to a real
+-- descriptor, while a bare ANY carries no type information at all.
+OpenType DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+MY-CLASS ::= CLASS { &id INTEGER UNIQUE, &Type } WITH SYNTAX { &Type IDENTIFIED BY &id }
+
+-- The object set names defined types rather than using UTF8String and BOOLEAN
+-- directly. asn1c 0.9.29 (through v0.9.29-7) emits broken C for an object set
+-- cell holding a builtin type: emit_ioc_cell in libasn1compiler/asn1c_ioc.c
+-- handles only AMT_VALUE and AMT_TYPEREF, and returns an ignored error after
+-- having already written the opening of the cell. Naming the types makes them
+-- typereferences, which it handles correctly.
+Text ::= UTF8String
+Flag ::= BOOLEAN
+
+Set1 MY-CLASS ::= { { Text IDENTIFIED BY 1 } | { Flag IDENTIFIED BY 2 } }
+
+Msg ::= SEQUENCE {
+    id   MY-CLASS.&id   ({Set1}),
+    body MY-CLASS.&Type ({Set1}{@id})
+}
+
+Opaque ::= SEQUENCE {
+    id   INTEGER,
+    blob ANY
+}
+
+END

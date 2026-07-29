@@ -57,8 +57,8 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 
 # ---- tests ----------------------------------------------------------------
 
-SCHEMAS := prim constructed strings
-TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings
+SCHEMAS := prim constructed strings opentype
+TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype
 
 t_link_SCHEMA   := prim
 t_writer_SCHEMA := prim
@@ -69,6 +69,7 @@ t_sequence_SCHEMA := constructed
 t_collection_SCHEMA := constructed
 t_bits_oid_SCHEMA := prim
 t_strings_SCHEMA  := strings
+t_opentype_SCHEMA := opentype
 
 # asn1c writes into the current directory, so generate inside the target.
 tests/gen/%/.stamp: tests/schemas/%.asn1
@@ -78,15 +79,28 @@ tests/gen/%/.stamp: tests/schemas/%.asn1
 	    $(abspath $<) >/dev/null
 	touch $@
 
+# Generated code is asn1c's output, not ours, so it is compiled with warnings
+# off. Our own sources keep the full warning set.
+#
+# The result stays as loose object files rather than an archive on purpose. A
+# static archive would break the weak fallbacks in vn_optabs.c: the linker pulls
+# an archive member only to resolve an *undefined* symbol, and every asn_OP_*
+# table is already weakly defined, so a skeleton needed solely for its operation
+# table would never be pulled in and the weak dummy would win. Object files named
+# on the command line are always included, so their strong definitions override.
+tests/gen/%/.built: tests/gen/%/.stamp
+	cd tests/gen/$* && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w -I. -c *.c
+	touch $@
+
 TEST_SUPPORT := tests/vntest.c
 
 define TEST_RULE
 tests/bin/$(1): tests/$(1).c $$(TEST_SUPPORT) $$(VN_SRCS) \
-                tests/gen/$$($(1)_SCHEMA)/.stamp
+                tests/gen/$$($(1)_SCHEMA)/.built
 	@mkdir -p tests/bin
 	$$(CC) $$(ALL_CFLAGS) -Itests -Itests/gen/$$($(1)_SCHEMA) \
 	    tests/$(1).c $$(TEST_SUPPORT) $$(VN_SRCS) \
-	    $$(wildcard tests/gen/$$($(1)_SCHEMA)/*.c) -o $$@ -lm
+	    tests/gen/$$($(1)_SCHEMA)/*.o -o $$@ -lm
 endef
 $(foreach t,$(TESTS),$(eval $(call TEST_RULE,$(t))))
 
