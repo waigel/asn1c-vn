@@ -21,6 +21,16 @@ typedef struct vn_writer_s {
     int         failed;    /* sticky */
     const asn_TYPE_descriptor_t *failed_td;
     const void                  *failed_sptr;
+    /*
+     * Scoped key for the member being written, e.g. "AlgoParameter__algorithmID".
+     *
+     * An inline `algorithmID INTEGER { ... }` member has no descriptor of its own
+     * -- asn1c points it straight at asn_DEF_NativeInteger, whose name is
+     * "INTEGER" -- so its identifiers cannot be found by type name. Parent plus
+     * member name is the key that reaches them. asn1c threads opt_mname through
+     * its XER codec for the same reason.
+     */
+    char member_key[192];
 } vn_writer_t;
 
 /* --- vn_writer.c ---------------------------------------------------------- */
@@ -35,6 +45,14 @@ int  vn_comment(vn_writer_t *w, const char *fmt, ...); /* no-op unless ANNOTATED
 int  vn_fail(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
              const char *fmt, ...);                    /* always returns -1 */
 int  vn_is_annotated(const vn_writer_t *w);
+
+/* Build "<Parent>__<member>" into dst; empty when either part is missing. */
+void vn_member_key(char *dst, size_t dstsz, const char *parent,
+                   const char *member);
+/* Names for td, preferring the scoped key over the type name. */
+const vn_type_names_t *vn_names_for(const vn_annotations_t *ann,
+                                    const char *scoped_key,
+                                    const asn_TYPE_descriptor_t *td);
 
 /* --- vn_encoder.c -------------------------------------------------------- */
 int vn_encode_value(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
@@ -121,6 +139,7 @@ typedef struct vn_reader_s {
     char                   *errbuf;
     size_t                  errlen;
     int                     eof;
+    char                    member_key[192]; /* see vn_writer_t.member_key */
 } vn_reader_t;
 
 /* vn_reader.c */

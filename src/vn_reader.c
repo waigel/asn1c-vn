@@ -322,7 +322,7 @@ vn_rd_integer(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     case VT_IDENT: {
         /* A named number, if the annotation table supplies one. */
         const vn_type_names_t *names =
-            vn_annotations_find(r->annotations, td->name);
+            vn_names_for(r->annotations, r->member_key, td);
         size_t i;
         if(names && !names->is_bit_string) {
             for(i = 0; i < names->count; i++) {
@@ -515,7 +515,7 @@ vn_rd_bit_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     case VT_LBRACE: {
         /* A named bit list: { keyCert, crlSign } */
         const vn_type_names_t *names =
-            vn_annotations_find(r->annotations, td->name);
+            vn_names_for(r->annotations, r->member_key, td);
         size_t  highest = 0;
         uint8_t tmp[64];
 

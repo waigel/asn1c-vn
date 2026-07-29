@@ -69,8 +69,15 @@ vn_h_sequence(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
                     if(vn_puts(w, elm->name) < 0) rc = -1;
                     if(!rc && vn_putc(w, ' ') < 0) rc = -1;
                 }
-                if(!rc && vn_encode_value(w, elm->type, dflt, level + 1) < 0)
-                    rc = -1;
+                if(!rc) {
+                    char saved[sizeof w->member_key];
+                    memcpy(saved, w->member_key, sizeof saved);
+                    vn_member_key(w->member_key, sizeof w->member_key, td->name,
+                                  elm->name);
+                    if(vn_encode_value(w, elm->type, dflt, level + 1) < 0)
+                        rc = -1;
+                    memcpy(w->member_key, saved, sizeof saved);
+                }
                 if(!rc && vn_is_annotated(w)) {
                     if(vn_putc(w, ' ') < 0) rc = -1;
                     if(!rc && vn_comment(w, "DEFAULT") < 0) rc = -1;
@@ -98,7 +105,16 @@ vn_h_sequence(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
             if(vn_puts(w, elm->name) < 0) return -1;
             if(vn_putc(w, ' ') < 0) return -1;
         }
-        if(vn_encode_value(w, elm->type, memb, level + 1) < 0) return -1;
+        {
+            char saved[sizeof w->member_key];
+            int  rc;
+            memcpy(saved, w->member_key, sizeof saved);
+            vn_member_key(w->member_key, sizeof w->member_key, td->name,
+                          elm->name);
+            rc = vn_encode_value(w, elm->type, memb, level + 1);
+            memcpy(w->member_key, saved, sizeof saved);
+            if(rc < 0) return -1;
+        }
         emitted = 1;
     }
 

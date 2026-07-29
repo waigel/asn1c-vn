@@ -121,7 +121,13 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
 
         slot = vn_rd_member_slot(&td->elements[i], st, &direct);
         {
-            int rc = vn_rd_value(r, td->elements[i].type, slot);
+            char saved[sizeof r->member_key];
+            int  rc;
+            memcpy(saved, r->member_key, sizeof saved);
+            vn_member_key(r->member_key, sizeof r->member_key, td->name,
+                          td->elements[i].name);
+            rc = vn_rd_value(r, td->elements[i].type, slot);
+            memcpy(r->member_key, saved, sizeof saved);
             if(rc != VR_OK) return rc;
         }
         seen[i / 8] |= (unsigned char)(1u << (i % 8));

@@ -1,9 +1,9 @@
 /*
- * vn_encoder.h -- ASN.1 value notation encoder for vlm/asn1c.
+ * vn_encoder.h -- ASN.1 value notation codec for vlm/asn1c.
  *
- * Serialises a decoded asn1c structure as the textual value notation defined
- * by ITU-T X.680 (02/2021) = ISO/IEC 8824-1:2021. Output only; reading value
- * notation back into a structure is out of scope.
+ * Converts between a decoded asn1c structure and the textual value notation
+ * defined by ITU-T X.680 (02/2021) = ISO/IEC 8824-1:2021: vn_encode() writes it,
+ * vn_decode() reads it back.
  */
 #ifndef VN_ENCODER_H
 #define VN_ENCODER_H

@@ -78,8 +78,13 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 	@mkdir -p build/gen
 	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
 	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
+	@# Link the identifier table too: it recovers the INTEGER named numbers and
+	@# BIT STRING named bits asn1c drops, which the reader needs to accept
+	@# reference tooling's output at all. Costs nothing when the schema has none.
+	$(MAKE) --no-print-directory vn-annotate
+	./vn-annotate $(GEN_DIR) > build/vn_annotations.c
 	$(CC) $(ALL_CFLAGS) -idirafter $(GEN_DIR) -DPDU=$(PDU) \
-	    tools/asn1vn.c $(VN_SRCS) build/gen/*.o \
+	    tools/asn1vn.c $(VN_SRCS) build/vn_annotations.c build/gen/*.o \
 	    -o $@ -lm
 
 # ---- annotation sidecar ---------------------------------------------------

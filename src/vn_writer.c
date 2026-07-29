@@ -24,6 +24,27 @@ vn_annotations_find(const vn_annotations_t *ann, const char *type_name) {
 }
 
 void
+vn_member_key(char *dst, size_t dstsz, const char *parent, const char *member) {
+    if(!dst || dstsz == 0) return;
+    dst[0] = '\0';
+    if(!parent || !parent[0] || !member || !member[0]) return;
+    snprintf(dst, dstsz, "%s__%s", parent, member);
+}
+
+const vn_type_names_t *
+vn_names_for(const vn_annotations_t *ann, const char *scoped_key,
+             const asn_TYPE_descriptor_t *td) {
+    const vn_type_names_t *n = 0;
+
+    /* The scoped key wins: an inline member shares asn_DEF_NativeInteger with
+     * every other plain INTEGER, so the type name would match the wrong thing or
+     * nothing at all. */
+    if(scoped_key && scoped_key[0]) n = vn_annotations_find(ann, scoped_key);
+    if(!n && td) n = vn_annotations_find(ann, td->name);
+    return n;
+}
+
+void
 vn_writer_init(vn_writer_t *w, const vn_options_t *opts,
                asn_app_consume_bytes_f *cb, void *key) {
     memset(w, 0, sizeof(*w));

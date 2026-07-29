@@ -238,7 +238,7 @@ vn_h_bit_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
      */
     {
         const vn_type_names_t *names =
-            vn_annotations_find(w->annotations, td->name);
+            vn_names_for(w->annotations, w->member_key, td);
         if(names && names->is_bit_string) {
             size_t i, listed = 0;
             int    unnamed = 0;
@@ -417,7 +417,7 @@ vn_h_integer(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
 static int
 vn_try_named_number(vn_writer_t *w, const asn_TYPE_descriptor_t *td, long value) {
     const vn_type_names_t *names =
-        vn_annotations_find(w->annotations, td->name);
+        vn_names_for(w->annotations, w->member_key, td);
     size_t i;
 
     if(!names || names->is_bit_string) return 0;

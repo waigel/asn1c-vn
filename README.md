@@ -1,11 +1,11 @@
 # asn1c-vn
 
-An **ASN.1 value notation encoder** for [vlm/asn1c](https://github.com/vlm/asn1c).
+An **ASN.1 value notation codec** for [vlm/asn1c](https://github.com/vlm/asn1c).
 
-Turns a decoded asn1c structure into the textual value notation defined by
-**ITU-T X.680 (02/2021) = ISO/IEC 8824-1:2021**. That is the one transfer syntax
-asn1c does not ship: it handles BER, DER, XER, OER and PER, but not value
-notation.
+Converts between a decoded asn1c structure and the textual value notation defined
+by **ITU-T X.680 (02/2021) = ISO/IEC 8824-1:2021**, in both directions. That is
+the one transfer syntax asn1c does not ship: it handles BER, DER, XER, OER and
+PER, but not value notation.
 
 The X.68x series is freely available from the ITU, unlike most of its
 recommendations: <https://www.itu.int/rec/T-REC-X.680>.
@@ -29,9 +29,9 @@ $ asn1vn < profile_element.der
 }
 ```
 
-Output only. Reading value notation back into a structure needs a schema-driven
-parser and is deliberately out of scope — asn1c's XER support (`-ixer -oder`)
-already covers the round trip.
+Both directions, which is what makes the correctness claim checkable without any
+reference file: **DER → value notation → DER is byte-identical** for all 112
+`ProfileElement` values in the four GSMA test profiles.
 
 ## An addon, not a fork
 
@@ -97,16 +97,41 @@ containing `constr_TYPE.h`.
 ### CLI options
 
 ```
-asn1vn [-c|-a] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der
+asn1vn [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der
+asn1vn -r < input.vn > output.der
   -c        canonical output: deterministic, for diffing
   -a        annotated output: adds X.680 comments
+  -A        emit `valueN <Type> ::= <value>` assignments, the form reference
+            tooling uses, so its output can be diffed directly
   -l WIDTH  wrap hex at WIDTH columns; 0 disables wrapping
   -i WIDTH  indent width, default 4
   -L        lenient: emit questionable values instead of failing
   -S        strict: fail on a bare ANY rather than emitting hex
+  -r        reverse: value notation in, DER out
 ```
 
+`-r` reverses the tool: value notation on stdin, DER on stdout. It accepts bare
+values and `valueN <Type> ::= …` assignments one after another, which is how
+reference tooling writes them, so a file of assignments becomes the concatenated
+encodings — what an SGP.22 profile package is.
+
 Exit status is 0 on success, 1 on a decode or encode failure, 2 on a usage error.
+
+### Reading reference value notation
+
+Against the GSMA test profiles, `-r` parses all four of GSMA's own `.txt` files
+completely and the resulting DER differs from GSMA's own `.der` by a constant 524
+bytes, in exactly one construct: `sqnInit`, a `SEQUENCE OF` with a DEFAULT.
+
+GSMA's text states that default explicitly, GSMA's DER omits it, and asn1c keeps
+neither the value nor a comparator for a `SEQUENCE OF` default — so the encoder
+cannot know the value equals the default and has to emit it. Every other
+construct in those files round-trips byte-identically: all 26 to 30 elements per
+profile, every type, the named numbers, and the defaults asn1c does retain.
+
+That makes `SEQUENCE OF` defaults the single remaining obstacle to byte-identical
+interoperability with reference value notation, rather than the rare curiosity
+they looked like when counting diff lines.
 
 The tool decodes **every** value in the input, not just the first. A single DER
 value is the common case, but some formats concatenate them — an SGP.22 profile
