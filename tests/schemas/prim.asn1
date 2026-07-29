@@ -1,0 +1,20 @@
+-- prim.asn1: leaf types, exercised without composition.
+--
+-- REAL is present so that asn1c emits REAL.c and the negative test can prove
+-- an unsupported type fails loudly rather than emitting anything.
+Prim DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+Colour ::= ENUMERATED { red(0), green(1), blue(2) }
+
+Holder ::= SEQUENCE {
+    flag  BOOLEAN,
+    void  NULL,
+    small INTEGER,
+    col   Colour,
+    data  OCTET STRING,
+    bits  BIT STRING,
+    oid   OBJECT IDENTIFIER,
+    real  REAL OPTIONAL
+}
+
+END

@@ -1,0 +1,133 @@
+/*
+ * vn_writer.c -- output sink, indentation and mode policy.
+ *
+ * Knows about bytes, indentation and comments; nothing about ASN.1 types.
+ * Failures are sticky: once the writer has failed, every call is a no-op that
+ * returns -1, so handlers may defer their error checks.
+ */
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#include "vn_internal.h"
+
+void
+vn_writer_init(vn_writer_t *w, const vn_options_t *opts,
+               asn_app_consume_bytes_f *cb, void *key) {
+    memset(w, 0, sizeof(*w));
+    w->cb = cb;
+    w->key = key;
+    w->mode = opts ? opts->mode : VN_MODE_PRETTY;
+    w->indent_width = (opts && opts->indent_width > 0) ? opts->indent_width : 4;
+    w->line_width = (opts && opts->line_width > 0) ? opts->line_width : 76;
+    w->flags = opts ? opts->flags : 0u;
+    w->errbuf = opts ? opts->errbuf : 0;
+    w->errlen = opts ? opts->errlen : 0;
+
+    /* Canonical output must not vary with caller preferences, or two callers
+     * could produce differing "canonical" text for the same value. */
+    if(w->mode == VN_MODE_CANONICAL) {
+        w->indent_width = 2;
+        w->line_width = 0;
+    }
+}
+
+int
+vn_fail(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+        const char *fmt, ...) {
+    if(!w->failed) {
+        w->failed = 1;
+        w->failed_td = td;
+        w->failed_sptr = sptr;
+        if(w->errbuf && w->errlen) {
+            va_list ap;
+            va_start(ap, fmt);
+            vsnprintf(w->errbuf, w->errlen, fmt, ap);
+            va_end(ap);
+        }
+    }
+    return -1;
+}
+
+int
+vn_put(vn_writer_t *w, const char *s, size_t len) {
+    if(w->failed) return -1;
+    if(len == 0) return 0;
+    if(!w->cb) return vn_fail(w, w->failed_td, w->failed_sptr,
+                              "no output callback supplied");
+    if(w->cb(s, len, w->key) < 0)
+        return vn_fail(w, w->failed_td, w->failed_sptr,
+                       "output callback failed");
+    w->written += len;
+    return 0;
+}
+
+int
+vn_puts(vn_writer_t *w, const char *s) {
+    return vn_put(w, s, strlen(s));
+}
+
+int
+vn_putc(vn_writer_t *w, char c) {
+    return vn_put(w, &c, 1);
+}
+
+int
+vn_printf(vn_writer_t *w, const char *fmt, ...) {
+    char scratch[128];
+    va_list ap;
+    int n;
+
+    if(w->failed) return -1;
+    va_start(ap, fmt);
+    n = vsnprintf(scratch, sizeof scratch, fmt, ap);
+    va_end(ap);
+    if(n < 0 || (size_t)n >= sizeof scratch)
+        return vn_fail(w, w->failed_td, w->failed_sptr,
+                       "internal: formatted value exceeds %u bytes",
+                       (unsigned)sizeof scratch);
+    return vn_put(w, scratch, (size_t)n);
+}
+
+int
+vn_break(vn_writer_t *w, int level) {
+    static const char spaces[16] = "                ";
+    int n = level * w->indent_width;
+
+    if(vn_putc(w, '\n') < 0) return -1;
+    while(n > 0) {
+        int chunk = n > (int)sizeof spaces ? (int)sizeof spaces : n;
+        if(vn_put(w, spaces, (size_t)chunk) < 0) return -1;
+        n -= chunk;
+    }
+    return 0;
+}
+
+int
+vn_is_annotated(const vn_writer_t *w) {
+    return w->mode == VN_MODE_ANNOTATED;
+}
+
+int
+vn_comment(vn_writer_t *w, const char *fmt, ...) {
+    char scratch[192];
+    va_list ap;
+    char *p;
+    int n;
+
+    if(w->failed) return -1;
+    if(!vn_is_annotated(w)) return 0;
+
+    va_start(ap, fmt);
+    n = vsnprintf(scratch, sizeof scratch, fmt, ap);
+    va_end(ap);
+    if(n < 0) return vn_fail(w, 0, 0, "internal: bad comment format");
+
+    /* X.680 11.6: a comment ends at "--", so the text must not contain one. */
+    for(p = scratch; p[0] && p[1]; p++)
+        if(p[0] == '-' && p[1] == '-') p[0] = '~';
+
+    if(vn_puts(w, "-- ") < 0) return -1;
+    if(vn_puts(w, scratch) < 0) return -1;
+    return vn_puts(w, " --");
+}
