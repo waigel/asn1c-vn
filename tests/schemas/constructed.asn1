@@ -3,6 +3,9 @@ Constructed DEFINITIONS AUTOMATIC TAGS ::= BEGIN
 
 Colour ::= ENUMERATED { red(0), green(1), blue(2) }
 
+-- An INTEGER with named numbers, for the reader's identifier handling.
+Level ::= INTEGER { low(0), medium(5), high(10) }
+
 Inner ::= SEQUENCE {
     id   INTEGER,
     tag  OCTET STRING

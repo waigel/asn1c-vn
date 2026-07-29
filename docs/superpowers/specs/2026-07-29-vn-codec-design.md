@@ -40,13 +40,28 @@ rval.consumed = 0;
 
 The contract we mirror:
 
-- **Constructed types** resume byte-exactly, state in `_asn_ctx.phase/step/context`
-  of the target structure.
+- **Constructed types** resume at the start of their own value.
+
+  > **Corrected after implementation.** The design said they would resume
+  > byte-exactly via `_asn_ctx.phase/step`. What was built is simpler: every level
+  > reports the position at which *its* value began, so the value is re-parsed
+  > from there. It is correct and passes the incremental test, and `_asn_ctx.ptr`
+  > is still used to own an in-progress list element, but `phase`/`step` are not.
+  > The cost is that a stream fed in small chunks re-parses the open value on each
+  > presentation, which is quadratic in the worst case. Files, the actual use case,
+  > never hit it.
 - **Native primitives** (`long`, `double`; no `_asn_ctx`) return `consumed = 0` on
   `RC_WMORE`; the caller re-presents the value from its start.
 - **Buffer-backed primitives** have an `_asn_ctx` and could resume; v1 treats them
   like natives, which is simpler and still correct. Upgradable without an API
   break.
+- Callers must set `VN_RF_EOF` on the last presentation.
+
+  > **Added after implementation.** A bare token at the end of a buffer is
+  > ambiguous: `TRUE` may be complete or the start of a longer identifier. Without
+  > an explicit end-of-input signal the reader asks for more for ever, which is
+  > how the first CHOICE round trip failed.
+
 - A single token must be complete within one presentation. A 10 KB hstring needs
   a 10 KB buffer. asn1c's XER decoder has the same property.
 - `*struct_ptr` belongs to the caller after `RC_WMORE` **and** after `RC_FAIL`,

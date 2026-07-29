@@ -24,6 +24,17 @@
  * the two cannot be distinguished here. That is harmless: the encoder consults
  * the annotations only where the runtime map is absent.
  *
+ * The C names are not the ASN.1 names: asn1c_make_identifier() rewrites every
+ * character a C identifier cannot carry -- in legal ASN.1 that is only the
+ * hyphen -- to an underscore, so the header says Threshold_light_red where the
+ * schema says light-red. X.680 12.3 admits letters, digits and hyphens only,
+ * which makes the reverse map total: every lone underscore was a hyphen. The
+ * emission path maps them back; a run of underscores is asn1c's scope
+ * separator for inline members (Box__mode) and is left alone. The runtime
+ * descriptor names the encoder matches against keep their hyphens
+ * (asn_DEF_Pe_Level.name is "Pe-Level"), so the table keys get the same
+ * treatment.
+ *
  * Deliberately not a source: the DEFAULT value asn1c writes into a header
  * comment. A long or oddly spaced literal makes its comment emitter overrun and
  * corrupt neighbouring members' comments, silently.
@@ -69,6 +80,58 @@ static char *
 skip_ws(char *p) {
     while(*p && isspace((unsigned char)*p)) p++;
     return p;
+}
+
+/*
+ * A C name with asn1c's identifier mangling undone: each lone underscore
+ * becomes the hyphen it once was, a run of underscores is the inline-member
+ * scope separator and stays. Returns a static buffer; one use per printf.
+ */
+static const char *
+asn1_name(const char *s) {
+    static char out[MAX_NAME];
+    size_t i = 0, o = 0;
+
+    while(s[i] && o + 1 < sizeof out) {
+        if(s[i] == '_' && s[i + 1] != '_' && (i == 0 || s[i - 1] != '_')) {
+            out[o++] = '-';
+            i++;
+        } else {
+            out[o++] = s[i++];
+        }
+    }
+    out[o] = '\0';
+    return out;
+}
+
+/*
+ * Undo asn1c's C spelling in place.
+ *
+ * asn1c_make_identifier() replaces every character a C identifier cannot carry
+ * with an underscore. X.680 12.3 admits letters, digits and hyphens only, so in
+ * legal ASN.1 the hyphen is the only such character and the reverse map is
+ * total: a lone underscore was a hyphen.
+ *
+ * A run of two or more underscores is different -- it is asn1c's scope separator
+ * for an inline member (Box__mode) -- and is left exactly as it is. Leaving it
+ * alone also keeps the table key equal to the runtime descriptor's name, which
+ * is what the encoder matches against.
+ */
+static void
+unmangle(char *s) {
+    char *p = s;
+
+    while(*p) {
+        if(*p != '_') {
+            p++;
+            continue;
+        }
+        {
+            char *run = p;
+            while(*p == '_') p++;
+            if(p - run == 1) *run = '-';
+        }
+    }
 }
 
 /* Copy an identifier, returning the count of characters taken. */
@@ -215,7 +278,7 @@ main(int argc, char **argv) {
         printf("static const vn_named_value_t vn_nv_%s[] = {\n",
                types[i].type_name);
         for(j = 0; j < types[i].count; j++)
-            printf("    { \"%s\", %ld },\n", types[i].values[j].name,
+            printf("    { \"%s\", %ld },\n", asn1_name(types[i].values[j].name),
                    types[i].values[j].value);
         printf("};\n");
         emitted++;
@@ -224,9 +287,11 @@ main(int argc, char **argv) {
     printf("\nstatic const vn_type_names_t vn_types[] = {\n");
     for(i = 0; i < type_count; i++) {
         if(types[i].count == 0) continue;
-        printf("    { \"%s\", vn_nv_%s, %lu, %d },\n", types[i].type_name,
-               types[i].type_name, (unsigned long)types[i].count,
-               types[i].is_bit_string);
+        /* The string key gets the ASN.1 spelling, to match what the runtime
+         * descriptor carries; the array reference stays a C identifier. */
+        printf("    { \"%s\", vn_nv_%s, %lu, %d },\n",
+               asn1_name(types[i].type_name), types[i].type_name,
+               (unsigned long)types[i].count, types[i].is_bit_string);
     }
     printf("};\n\n");
 

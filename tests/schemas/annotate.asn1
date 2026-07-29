@@ -1,0 +1,32 @@
+-- annotate.asn1: input for vn-annotate, the annotation table generator.
+--
+-- Every identifier here carries a hyphen on purpose: asn1c rewrites hyphens to
+-- underscores when it forms C enum names (asn1c_misc.c, asn1c_make_identifier),
+-- and X.680 12.3 admits letters, digits and hyphens only, so a table that
+-- copies the C spelling emits invalid value notation. `auto` probes what asn1c
+-- does to an identifier that collides with a C keyword.
+Annotate DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+Threshold ::= INTEGER { light-red(1), dark-blue(2), auto(3) }
+
+Caps ::= BIT STRING { key-cert(0), crl-sign(1), data-encipher(3) }
+
+-- A hyphen in the *type* name: the runtime descriptor says "Pe-Level" while
+-- the generated header says Pe_Level, so the table key needs the same mapping
+-- as the value names.
+Pe-Level ::= INTEGER { rock-bottom(0), deep-black(9) }
+
+-- ENUMERATED identifiers are retained at runtime and the encoder never
+-- consults the table for them, but the generator still scans the enum, so its
+-- names must be mapped like every other.
+Mood ::= ENUMERATED { very-happy(0), so-so(1) }
+
+-- An inline INTEGER member. asn1c scopes its enum as Box__mode with a double
+-- underscore, which is a C name boundary rather than a former hyphen and must
+-- survive the mapping untouched.
+Box ::= SEQUENCE {
+    mode INTEGER { slow-start(0), fast(1) },
+    pad  OCTET STRING
+}
+
+END

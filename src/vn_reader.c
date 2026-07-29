@@ -114,6 +114,36 @@ vn_rd_alloc(vn_reader_t *r, void **sptr, size_t size) {
 
 /* --- helpers -------------------------------------------------------------- */
 
+/*
+ * Convert a token body to a number.
+ *
+ * A token points into the caller's buffer and is NOT NUL-terminated, so handing
+ * tok->body straight to strtol lets it scan past the end of the input. A fuzzer
+ * found exactly that as a heap overflow. Copy into a bounded scratch buffer
+ * first, and reject anything too long to be a number rather than truncating it.
+ */
+static int
+vn_tok_number(vn_reader_t *r, const vn_token_t *tok, int is_unsigned,
+              long *out_signed, unsigned long *out_unsigned) {
+    char  scratch[32];
+    char *end;
+
+    if(tok->body_len == 0 || tok->body_len >= sizeof scratch)
+        return vn_rd_fail(r, (size_t)(tok->start - r->buf),
+                          "'%.*s' is not a usable number",
+                          (int)(tok->body_len > 24 ? 24 : tok->body_len),
+                          tok->body);
+    memcpy(scratch, tok->body, tok->body_len);
+    scratch[tok->body_len] = '\0';
+    errno = 0;
+    if(is_unsigned) *out_unsigned = strtoul(scratch, &end, 10);
+    else *out_signed = strtol(scratch, &end, 10);
+    if(errno != 0 || *end != '\0')
+        return vn_rd_fail(r, (size_t)(tok->start - r->buf),
+                          "'%s' is out of range", scratch);
+    return VR_OK;
+}
+
 static int
 vn_hexval(char c) {
     if(c >= '0' && c <= '9') return c - '0';
@@ -318,7 +348,9 @@ vn_rd_integer(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     st = (INTEGER_t *)vn_rd_alloc(r, sptr, sizeof(*st));
     if(!st) return VR_FAIL;
 
-    if(tok.body_len < sizeof scratch) {
+    /* A value that fits a long takes the simple path; anything wider goes
+     * through the decimal-to-binary conversion below. */
+    if(tok.body_len < 20) {
         char *end;
         memcpy(scratch, tok.body, tok.body_len);
         scratch[tok.body_len] = '\0';
@@ -383,8 +415,7 @@ vn_rd_enum_value(vn_reader_t *r, const asn_TYPE_descriptor_t *td, long *out) {
             return vn_rd_fail(r, from,
                               "ENUMERATED %s needs an identifier, not a number",
                               td->name ? td->name : "");
-        *out = strtol(tok.body, 0, 10);
-        return VR_OK;
+        return vn_tok_number(r, &tok, 0, out, 0);
     default:
         return vn_rd_fail(r, from, "expected an enumeration identifier");
     }
@@ -570,7 +601,12 @@ vn_rd_arcs(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr,
         if(count >= sizeof arcs / sizeof arcs[0])
             return vn_rd_fail(r, item, "more than %u arcs",
                               (unsigned)(sizeof arcs / sizeof arcs[0]));
-        arcs[count++] = (asn_oid_arc_t)strtoul(tok.body, 0, 10);
+        {
+            unsigned long arc = 0;
+            int           rc = vn_tok_number(r, &tok, 1, 0, &arc);
+            if(rc != VR_OK) return rc;
+            arcs[count++] = (asn_oid_arc_t)arc;
+        }
     }
     if(!vn_rd_alloc(r, sptr, relative ? sizeof(RELATIVE_OID_t)
                                       : sizeof(OBJECT_IDENTIFIER_t)))

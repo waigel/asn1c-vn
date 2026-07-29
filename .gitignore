@@ -4,6 +4,10 @@
 /asn1vn
 /asn1vn-named
 /vn-annotate
+/fuzz-read
+/crash-*
+/leak-*
+/timeout-*
 *.dSYM/
 
 # test binaries, and the asn1c-generated code they link against

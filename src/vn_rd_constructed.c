@@ -27,19 +27,34 @@ vn_rd_member_slot(const asn_TYPE_member_t *elm, void *sptr, void **direct) {
     return direct;
 }
 
+/*
+ * A member being absent cannot be inferred from the structure alone: asn1c stores
+ * a mandatory member inline, so an omitted one is indistinguishable from one
+ * whose value happens to be zero. Which members actually appeared therefore has
+ * to be tracked while parsing.
+ */
+#define VN_RD_MAX_MEMBERS 512
+
 int
 vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     const asn_SEQUENCE_specifics_t *specs =
         (const asn_SEQUENCE_specifics_t *)td->specifics;
-    size_t     from = r->pos;
-    vn_token_t tok;
-    void      *st;
-    unsigned   next = 0;
-    int        first = 1;
+    size_t        from = r->pos;
+    vn_token_t    tok;
+    void         *st;
+    unsigned      next = 0;
+    /* A comma separates values: it must follow one and precede another. */
+    int           after_value = 0, after_comma = 0;
+    unsigned char seen[VN_RD_MAX_MEMBERS / 8];
 
     if(!specs)
         return vn_rd_fail(r, from, "SEQUENCE %s has no specifics",
                           td->name ? td->name : "(unnamed)");
+    if(td->elements_count > VN_RD_MAX_MEMBERS)
+        return vn_rd_fail(r, from, "%s has more than %d members",
+                          td->name ? td->name : "this SEQUENCE",
+                          VN_RD_MAX_MEMBERS);
+    memset(seen, 0, sizeof seen);
 
     if(vn_rd_token(r, &tok) != VT_LBRACE) {
         if(tok.kind == VT_INCOMPLETE || tok.kind == VT_END)
@@ -59,13 +74,22 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
         void     **slot;
 
         if(k == VT_INCOMPLETE || k == VT_END) return vn_rd_more(r, from);
-        if(k == VT_RBRACE) break;
+        if(k == VT_RBRACE) {
+            if(after_comma)
+                return vn_rd_fail(r, item, "trailing comma before }");
+            break;
+        }
         if(k == VT_COMMA) {
-            if(first) return vn_rd_fail(r, item, "comma before the first member");
+            if(!after_value)
+                return vn_rd_fail(r, item, "comma with no preceding member");
+            after_comma = 1;
+            after_value = 0;
             continue;
         }
         if(k != VT_IDENT)
             return vn_rd_fail(r, item, "expected a member name or }");
+        if(after_value)
+            return vn_rd_fail(r, item, "expected a comma between members");
 
         /*
          * X.680 requires the components in declaration order, so the search
@@ -100,8 +124,10 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             int rc = vn_rd_value(r, td->elements[i].type, slot);
             if(rc != VR_OK) return rc;
         }
+        seen[i / 8] |= (unsigned char)(1u << (i % 8));
         next = i + 1;
-        first = 0;
+        after_value = 1;
+        after_comma = 0;
     }
 
     /*
@@ -117,9 +143,8 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             void                    *direct = 0;
             void                   **slot = vn_rd_member_slot(elm, st, &direct);
 
-            if(!(elm->flags & ATF_POINTER)) continue; /* inline, always present */
-            if(*slot) continue;
-            if(elm->default_value_set) {
+            if(seen[i / 8] & (1u << (i % 8))) continue;
+            if((elm->flags & ATF_POINTER) && elm->default_value_set) {
                 if(elm->default_value_set(slot))
                     return vn_rd_fail(r, from, "cannot install the default of %s",
                                       elm->name ? elm->name : "?");
@@ -145,7 +170,7 @@ vn_rd_set_of(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     void                        *st;
     asn_anonymous_set_          *list;
     asn_struct_ctx_t            *ctx;
-    int                          first = 1;
+    int                          after_value = 0, after_comma = 0;
 
     if(!specs || td->elements_count != 1 || !td->elements[0].type)
         return vn_rd_fail(r, from, "list type %s is not usable",
@@ -170,11 +195,20 @@ vn_rd_set_of(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
         int        rc;
 
         if(k == VT_INCOMPLETE || k == VT_END) return vn_rd_more(r, from);
-        if(k == VT_RBRACE) break;
+        if(k == VT_RBRACE) {
+            if(after_comma)
+                return vn_rd_fail(r, item, "trailing comma before }");
+            break;
+        }
         if(k == VT_COMMA) {
-            if(first) return vn_rd_fail(r, item, "comma before the first element");
+            if(!after_value)
+                return vn_rd_fail(r, item, "comma with no preceding element");
+            after_comma = 1;
+            after_value = 0;
             continue;
         }
+        if(after_value)
+            return vn_rd_fail(r, item, "expected a comma between elements");
 
         /* Re-present this element's own start; parse it into ctx->ptr so an
          * abandoned partial element is still reachable for the free function. */
@@ -188,7 +222,8 @@ vn_rd_set_of(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
                               td->name ? td->name : "the list");
         }
         ctx->ptr = 0;
-        first = 0;
+        after_value = 1;
+        after_comma = 0;
     }
 
     return VR_OK;

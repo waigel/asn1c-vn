@@ -104,12 +104,14 @@ vn_printf(vn_writer_t *w, const char *fmt, ...) {
 
 int
 vn_break(vn_writer_t *w, int level) {
-    static const char spaces[16] = "                ";
+    /* No terminator is needed: vn_put takes an explicit length. */
+    static const char spaces[] = "                ";
     int n = level * w->indent_width;
 
     if(vn_putc(w, '\n') < 0) return -1;
     while(n > 0) {
-        int chunk = n > (int)sizeof spaces ? (int)sizeof spaces : n;
+        int room = (int)sizeof spaces - 1;
+        int chunk = n > room ? room : n;
         if(vn_put(w, spaces, (size_t)chunk) < 0) return -1;
         n -= chunk;
     }
