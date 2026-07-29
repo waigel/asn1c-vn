@@ -11,6 +11,24 @@ Threshold ::= INTEGER { light-red(1), dark-blue(2), auto(3) }
 
 Caps ::= BIT STRING { key-cert(0), crl-sign(1), data-encipher(3) }
 
+-- Two INTEGER representations other than the plain `long` that Threshold gets,
+-- both of which asn1c reaches for on its own and neither of which used to be
+-- offered the annotation table.
+--
+-- (0..MAX) makes the field `unsigned long` and sets field_unsigned; a range
+-- wider than asn1c is willing to hold natively makes it a buffer-backed
+-- INTEGER_t instead.
+Count ::= INTEGER { none(0), all(255) } (0..MAX)
+Wide  ::= INTEGER { brim(4294967295) } (0..4294967295)
+
+-- An inline BIT STRING member. asn1c writes the enum but no
+-- `typedef BIT_STRING_t Slot__marks_t;`, because the member is declared inside
+-- struct Slot, so the generator has to take the representation from there.
+Slot ::= SEQUENCE {
+    marks BIT STRING { first-mark(0), third-mark(2) },
+    tail  OCTET STRING
+}
+
 -- A hyphen in the *type* name: the runtime descriptor says "Pe-Level" while
 -- the generated header says Pe_Level, so the table key needs the same mapping
 -- as the value names.

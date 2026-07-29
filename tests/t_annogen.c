@@ -16,6 +16,9 @@
 #include "Pe-Level.h"
 #include "Pick.h"
 #include "Outer.h"
+#include "Count.h"
+#include "Wide.h"
+#include "Slot.h"
 
 extern const vn_annotations_t vn_generated_annotations;
 
@@ -192,6 +195,138 @@ main(void) {
         if(out && (!strstr(out, "alpha") || !strstr(out, "beta")))
             fprintf(stderr, "  got: %s\n", out);
         free(out);
+    }
+
+    /*
+     * The representations asn1c picks other than a plain `long`. Each reaches a
+     * different encoder path, and every one of them has to consult the table:
+     * otherwise the reader accepts an identifier the writer never emits.
+     */
+    VNT_CASE("an unsigned INTEGER resolves its named numbers");
+    {
+        Count_t      v = 255;
+        vn_options_t o;
+        memset(&o, 0, sizeof o);
+        o.annotations = ann;
+        out = vnt_encode(&asn_DEF_Count, &v, &o, reason, sizeof reason);
+        VNT_STREQ(out, "all");
+        free(out);
+    }
+
+    VNT_CASE("a buffer-backed INTEGER resolves its named numbers");
+    {
+        /* 4294967295 as a minimal two's-complement big-endian magnitude. */
+        static const uint8_t brim[] = {0x00, 0xff, 0xff, 0xff, 0xff};
+        Wide_t       w;
+        vn_options_t o;
+        memset(&w, 0, sizeof w);
+        memset(&o, 0, sizeof o);
+        w.buf = (uint8_t *)brim;
+        w.size = sizeof brim;
+        o.annotations = ann;
+        out = vnt_encode(&asn_DEF_Wide, &w, &o, reason, sizeof reason);
+        VNT_STREQ(out, "brim");
+        free(out);
+    }
+
+    /*
+     * An inline BIT STRING member. asn1c writes no base typedef for it, so the
+     * generator has to read the representation off the struct member instead;
+     * getting it wrong leaves the named bits silently unavailable.
+     */
+    VNT_CASE("an inline BIT STRING member is typed as named bits");
+    t = vn_annotations_find(ann, "Slot__marks");
+    VNT_TRUE(t != 0);
+    if(t) {
+        VNT_TRUE(t->is_bit_string == 1);
+        VNT_TRUE(nv_find(t, "first-mark") && nv_find(t, "third-mark"));
+    }
+
+    VNT_CASE("and its named bits round trip through both directions");
+    {
+        static const uint8_t bits[] = {0xa0}; /* bits 0 and 2 */
+        static const uint8_t tail[] = {0x01};
+        Slot_t       s;
+        vn_options_t eo;
+        memset(&s, 0, sizeof s);
+        memset(&eo, 0, sizeof eo);
+        s.marks.buf = (uint8_t *)bits;
+        s.marks.size = 1;
+        s.marks.bits_unused = 5;
+        s.tail.buf = (uint8_t *)tail;
+        s.tail.size = 1;
+        eo.mode = VN_MODE_CANONICAL;
+        eo.annotations = ann;
+        out = vnt_encode(&asn_DEF_Slot, &s, &eo, reason, sizeof reason);
+        VNT_TRUE(out && strstr(out, "{ first-mark, third-mark }") != 0);
+        if(out && !strstr(out, "{ first-mark, third-mark }"))
+            fprintf(stderr, "  got: %s\n", out);
+        if(out) {
+            void             *st = 0;
+            vn_read_options_t ro;
+            memset(&ro, 0, sizeof ro);
+            ro.flags = VN_RF_EOF;
+            ro.annotations = ann;
+            VNT_TRUE(vn_decode(0, &asn_DEF_Slot, &st, &ro, out, strlen(out)).code
+                     == RC_OK);
+            if(st) ASN_STRUCT_FREE(asn_DEF_Slot, st);
+        }
+        free(out);
+    }
+
+    /*
+     * The property all of the above is really about: whatever the writer emits,
+     * the reader takes, for every representation. An identifier accepted on
+     * input but never produced on output is the asymmetry that hides here.
+     */
+    VNT_CASE("every representation reads back what it wrote");
+    {
+        static const uint8_t brim[] = {0x00, 0xff, 0xff, 0xff, 0xff};
+        Count_t              c = 255;
+        Wide_t               w;
+        struct {
+            const asn_TYPE_descriptor_t *td;
+            const void                  *value;
+        } cases[3];
+        size_t n;
+        Threshold_t th = 2;
+
+        memset(&w, 0, sizeof w);
+        w.buf = (uint8_t *)brim;
+        w.size = sizeof brim;
+        cases[0].td = &asn_DEF_Count;
+        cases[0].value = &c;
+        cases[1].td = &asn_DEF_Wide;
+        cases[1].value = &w;
+        cases[2].td = &asn_DEF_Threshold;
+        cases[2].value = &th;
+
+        for(n = 0; n < sizeof cases / sizeof cases[0]; n++) {
+            vn_options_t      eo;
+            vn_read_options_t ro;
+            void             *st = 0;
+            memset(&eo, 0, sizeof eo);
+            memset(&ro, 0, sizeof ro);
+            eo.annotations = ann;
+            ro.annotations = ann;
+            ro.flags = VN_RF_EOF;
+            out = vnt_encode(cases[n].td, cases[n].value, &eo, reason,
+                             sizeof reason);
+            VNT_TRUE(out != 0);
+            if(!out) continue;
+            VNT_TRUE(vn_decode(0, cases[n].td, &st, &ro, out, strlen(out)).code
+                     == RC_OK);
+            if(st) {
+                VNT_TRUE(cases[n].td->op->compare_struct(cases[n].td, st,
+                                                         cases[n].value)
+                         == 0);
+                ASN_STRUCT_FREE(*cases[n].td, st);
+            } else {
+                fprintf(stderr, "  [%s] could not read back: %s\n",
+                        cases[n].td->name, out);
+            }
+            free(out);
+        }
     }
 
     return vnt_report("t_annogen");

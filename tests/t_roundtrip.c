@@ -129,7 +129,10 @@ done:
     return ok;
 }
 
-/* Build a value, DER-encode it, then round-trip that DER. */
+/* Build a value, DER-encode it, then round-trip that DER.
+ * Only the built-in cases construct values; a run against another schema drives
+ * everything from files. */
+#ifndef RT_EXTERNAL
 static void
 roundtrip_value(const asn_TYPE_descriptor_t *td, const void *value,
                 const char *label) {
@@ -148,6 +151,7 @@ roundtrip_value(const asn_TYPE_descriptor_t *td, const void *value,
     roundtrip(td, der.buf, der.len, label);
     free(der.buf);
 }
+#endif /* !RT_EXTERNAL */
 
 /* --- built-in cases ------------------------------------------------------- */
 

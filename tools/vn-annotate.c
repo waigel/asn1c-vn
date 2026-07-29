@@ -117,21 +117,24 @@ take_ident(const char *p, char *out, size_t outsz) {
 }
 
 /*
- * Two passes over one header.
+ * One forward scan over a header.
  *
- * The enum body and the base typedef are separate declarations, and the typedef
- * follows the enum, so a single forward scan handles both in order.
+ * asn1c emits the "Dependencies" enums first, then the struct, then the base
+ * typedef, so the declarations that describe a type always arrive after the enum
+ * that named its values and a single pass suffices.
  */
 static void
 scan_file(const char *path) {
     char          line[4096];
     FILE         *f = fopen(path, "r");
     type_names_t *cur = 0;
+    char          in_struct[MAX_NAME];
 
     if(!f) {
         fprintf(stderr, "vn-annotate: cannot open %s\n", path);
         return;
     }
+    in_struct[0] = '\0';
 
     while(fgets(line, sizeof line, f)) {
         char *p = skip_ws(line);
@@ -174,6 +177,43 @@ scan_file(const char *path) {
                     cur->count++;
                 }
             }
+            continue;
+        }
+
+        /*
+         * An inline member has no base typedef of its own, because it is
+         * declared inside its parent's struct:
+         *
+         *     typedef struct Slot {
+         *         BIT_STRING_t  marks;         // or  BIT_STRING_t *marks;
+         *
+         * so that declaration is the only statement of its representation. A
+         * member whose type is a named one, or an inline BIT STRING with no
+         * named bits, reaches the same line but has no entry to update, and the
+         * lookup below simply finds nothing.
+         */
+        if(in_struct[0]) {
+            if(*p == '}') {
+                in_struct[0] = '\0';
+            } else if(strncmp(p, "BIT_STRING_t", 12) == 0) {
+                char *q = skip_ws(p + 12);
+                char  member[MAX_NAME], key[MAX_NAME];
+                if(*q == '*') q = skip_ws(q + 1);
+                if(take_ident(q, member, sizeof member)) {
+                    type_names_t *t;
+                    snprintf(key, sizeof key, "%s__%s", in_struct, member);
+                    t = find_type(key);
+                    if(t) {
+                        t->base_seen = 1;
+                        t->is_bit_string = 1;
+                    }
+                }
+            }
+            continue;
+        }
+        if(strncmp(p, "typedef struct ", 15) == 0) {
+            char *q = skip_ws(p + 15);
+            take_ident(q, in_struct, sizeof in_struct);
             continue;
         }
 

@@ -5,6 +5,7 @@
  * the bytes go; that is the writer's business.
  */
 
+#include <limits.h>
 #include <string.h>
 #include <BOOLEAN.h>
 #include <INTEGER.h>
@@ -402,18 +403,35 @@ vn_int_decimal(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
     return vn_int_big_decimal(w, td, st);
 }
 
-int
-vn_h_integer(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
-             int level) {
-    (void)level;
-    return vn_int_decimal(w, td, (const INTEGER_t *)sptr);
-}
-
 /*
  * An INTEGER named number, if the annotation table supplies one. asn1c keeps
  * these only in the generated headers, never in the descriptors; see
  * vn_annotations_t. Returns 1 when a name was written.
+ *
+ * Declared ahead of the handlers because every INTEGER representation asn1c may
+ * choose has to offer the table the same chance: a schema's `(0..MAX)` becomes an
+ * unsigned long and a range too wide to hold natively becomes a buffer-backed
+ * INTEGER_t, and an identifier the reader accepts must be one the writer emits.
  */
+static int vn_try_named_number(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
+                               long value);
+
+int
+vn_h_integer(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+             int level) {
+    const INTEGER_t *st = (const INTEGER_t *)sptr;
+    long             value;
+    (void)level;
+
+    /* The table holds a named number as a long, so only a value that fits one
+     * can carry an identifier; anything wider falls through to decimal. */
+    if(st->buf && st->size && asn_INTEGER2long(st, &value) == 0) {
+        int rc = vn_try_named_number(w, td, value);
+        if(rc != 0) return rc < 0 ? -1 : 0;
+    }
+    return vn_int_decimal(w, td, st);
+}
+
 static int
 vn_try_named_number(vn_writer_t *w, const asn_TYPE_descriptor_t *td, long value) {
     const vn_type_names_t *names =
@@ -441,8 +459,16 @@ vn_h_native_integer(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
         (const asn_INTEGER_specifics_t *)td->specifics;
     (void)level;
 
-    if(specs && specs->field_unsigned)
-        return vn_printf(w, "%lu", *(const unsigned long *)sptr);
+    if(specs && specs->field_unsigned) {
+        unsigned long value = *(const unsigned long *)sptr;
+        /* Only a value a long can hold may match a named number, which the
+         * table stores as one. */
+        if(value <= LONG_MAX) {
+            int rc = vn_try_named_number(w, td, (long)value);
+            if(rc != 0) return rc < 0 ? -1 : 0;
+        }
+        return vn_printf(w, "%lu", value);
+    }
     {
         long value = *(const long *)sptr;
         int rc = vn_try_named_number(w, td, value);

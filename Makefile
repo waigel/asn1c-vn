@@ -39,7 +39,12 @@ check-skeldir:
 libvn.a: check-skeldir $(VN_OBJS)
 	ar rcs $@ $(VN_OBJS)
 
-%.o: %.c
+# Both headers are listed rather than tracked with -MMD: only two exist, and
+# every source includes at least one, so editing either has to rebuild the lot.
+# Without this an edit to vn_encoder.h leaves stale objects in libvn.a.
+VN_HDRS := include/vn_encoder.h src/vn_internal.h
+
+%.o: %.c $(VN_HDRS)
 	$(CC) $(ALL_CFLAGS) -c $< -o $@
 
 # ---- CLI ------------------------------------------------------------------
@@ -75,6 +80,9 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 	@# GeneralizedTime.c and leaves struct tm incomplete. -idirafter searches
 	@# GEN_DIR after the system directories, so system headers win while the
 	@# schema's own headers are still found.
+	@# Emptied first: the link below globs build/gen/*.o, so objects left by a
+	@# previous GEN_DIR would be linked into this binary as well.
+	rm -rf build/gen
 	@mkdir -p build/gen
 	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
 	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
@@ -205,6 +213,7 @@ check-xer: check-skeldir
 	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
 	@test -n "$(strip $(GEN_SRCS))" || { \
 	    echo "no *.c files in GEN_DIR=$(GEN_DIR)" >&2; exit 1; }
+	rm -rf build/gen
 	@mkdir -p build/gen tests/bin
 	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
 	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
@@ -274,6 +283,7 @@ check-roundtrip: check-skeldir
 	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
 	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
 	@test -n "$(DERDIR)"  || { echo "set DERDIR=<dir with *.der>" >&2; exit 1; }
+	rm -rf build/gen
 	@mkdir -p build/gen tests/bin
 	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
 	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))

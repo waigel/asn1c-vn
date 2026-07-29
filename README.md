@@ -195,6 +195,11 @@ path that reaches it, `AlgoParameter__algorithmID`, which is what asn1c names th
 enum. The path accumulates through anonymous types, so a nested one is
 `Outer__inner__x`, or `Outer__ring__Member__y` for a list element.
 
+Which representation asn1c picked does not matter: a plain `long`, the
+`unsigned long` it uses for `(0..MAX)`, and the buffer-backed `INTEGER_t` it
+falls back to for a range it will not hold natively all consult the table. They
+have to, or the reader would accept an identifier the writer never emits.
+
 Set it through `vn_options_t.annotations` / `vn_read_options_t.annotations`, or
 link the generated file and let the weak default pick it up.
 
