@@ -65,6 +65,19 @@ vs_push(vs_toks *ts, vs_kind kind, const char *s, size_t len, char *err,
     return 1;
 }
 
+/*
+ * strdup is POSIX, not C99: under glibc with -std=c99 it is not declared, so gcc
+ * assumes it returns int and truncates the pointer on a 64-bit target. Doing it
+ * by hand keeps the tests portable.
+ */
+static char *
+vs_dup(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *copy = (char *)malloc(n);
+    if(copy) memcpy(copy, s, n);
+    return copy;
+}
+
 static int
 vs_ident_char(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -349,7 +362,7 @@ vn_scan_scalars(const char *text, char **out, size_t max, size_t *count,
                     vs_free(&ts);
                     return 0;
                 }
-                out[n] = strdup(joined);
+                out[n] = vs_dup(joined);
                 if(!out[n]) {
                     vs_err(err, errlen, "out of memory");
                     vs_free(&ts);
@@ -367,7 +380,7 @@ vn_scan_scalars(const char *text, char **out, size_t max, size_t *count,
             vs_free(&ts);
             return 0;
         }
-        out[n] = strdup(ts.tok[i].text);
+        out[n] = vs_dup(ts.tok[i].text);
         if(!out[n]) {
             vs_err(err, errlen, "out of memory");
             vs_free(&ts);

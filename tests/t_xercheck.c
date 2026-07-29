@@ -13,6 +13,9 @@
  */
 #include <stdlib.h>
 #include <string.h>
+/* asn_random_fill.h uses intmax_t without including stdint.h itself, which
+ * breaks under gcc/glibc in C99 mode. */
+#include <stdint.h>
 #include <asn_random_fill.h>
 #include "vntest.h"
 #include "vnscan.h"
