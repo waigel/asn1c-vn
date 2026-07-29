@@ -1,0 +1,10 @@
+{ -- Nested --
+    name 'DEADBEEF'H,
+    inner { -- Inner --
+        id 5,
+        tag '0102'H
+    },
+    col blue,
+    opt 42
+    -- deflt absent --
+}
