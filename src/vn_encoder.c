@@ -62,7 +62,10 @@ static const struct vn_dispatch_s {
     { &asn_OP_NativeEnumerated, vn_h_native_enumerated  },
     { &asn_OP_OCTET_STRING,     vn_h_octet_string       },
     { &asn_OP_SEQUENCE,         vn_h_sequence           },
-    { &asn_OP_SET,              vn_h_sequence           }
+    { &asn_OP_SET,              vn_h_sequence           },
+    { &asn_OP_SEQUENCE_OF,      vn_h_set_of             },
+    { &asn_OP_SET_OF,           vn_h_set_of             },
+    { &asn_OP_CHOICE,           vn_h_choice             }
 };
 
 int
