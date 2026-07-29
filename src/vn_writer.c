@@ -23,12 +23,43 @@ vn_annotations_find(const vn_annotations_t *ann, const char *type_name) {
     return 0;
 }
 
+/*
+ * Whether a descriptor name is one the schema wrote, which is where a scope
+ * path starts over.
+ *
+ * 12.2 requires a typereference to begin with an upper-case letter and 12.3
+ * requires a member identifier to begin with a lower-case one, which separates
+ * the two cases: asn1c names an anonymous inline type after the member it hangs
+ * off ("inner"), so that name continues the path, while a real type name
+ * ("AlgoParameter") begins a fresh one -- and asn1c keys its enum that way too.
+ * A list's anonymous element type is called after the built-in instead, and
+ * 12.38 reserves those words so no schema type can be confused with them.
+ */
+static int
+vn_scope_restarts_at(const char *name) {
+    static const char *const anonymous[] = {"SEQUENCE", "SET", "CHOICE",
+                                            "SEQUENCE OF", "SET OF"};
+    size_t i;
+
+    if(!name || name[0] < 'A' || name[0] > 'Z') return 0;
+    for(i = 0; i < sizeof anonymous / sizeof anonymous[0]; i++)
+        if(strcmp(name, anonymous[i]) == 0) return 0;
+    return 1;
+}
+
 void
 vn_member_key(char *dst, size_t dstsz, const char *parent, const char *member) {
+    char        tmp[VN_MEMBER_KEY_MAX];
+    const char *base;
+
     if(!dst || dstsz == 0) return;
-    dst[0] = '\0';
-    if(!parent || !parent[0] || !member || !member[0]) return;
-    snprintf(dst, dstsz, "%s__%s", parent, member);
+    base = vn_scope_restarts_at(parent) ? parent : (dst[0] ? dst : parent);
+    if(!base || !base[0] || !member || !member[0]) {
+        dst[0] = '\0';
+        return;
+    }
+    snprintf(tmp, sizeof tmp, "%s__%s", base, member);
+    snprintf(dst, dstsz, "%s", tmp);
 }
 
 const vn_type_names_t *

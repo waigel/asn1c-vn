@@ -14,6 +14,8 @@
 #include "Threshold.h"
 #include "Caps.h"
 #include "Pe-Level.h"
+#include "Pick.h"
+#include "Outer.h"
 
 extern const vn_annotations_t vn_generated_annotations;
 
@@ -90,6 +92,11 @@ main(void) {
     VNT_TRUE(t != 0);
     if(t) VNT_TRUE(nv_find(t, "slow-start") != 0);
 
+    VNT_CASE("an inline CHOICE alternative is scoped the same way");
+    t = vn_annotations_find(ann, "Pick__speed");
+    VNT_TRUE(t != 0);
+    if(t) VNT_TRUE(nv_find(t, "crawl") && nv_find(t, "sprint"));
+
     /* --- end to end through the encoder ------------------------------------ */
 
     VNT_CASE("the generated table drives identifier output");
@@ -114,6 +121,76 @@ main(void) {
         o.annotations = ann;
         out = vnt_encode(&asn_DEF_Caps, &bs, &o, reason, sizeof reason);
         VNT_STREQ(out, "{ key-cert }");
+        free(out);
+    }
+
+    /*
+     * A CHOICE alternative reaches its scoped entry only if the handler
+     * establishes the scope before descending: the alternative's own descriptor
+     * is the shared asn_DEF_NativeInteger, whose name is "INTEGER".
+     */
+    VNT_CASE("an inline CHOICE alternative resolves its named numbers");
+    {
+        Pick_t       p;
+        vn_options_t o;
+        memset(&p, 0, sizeof p);
+        memset(&o, 0, sizeof o);
+        p.present = Pick_PR_speed;
+        p.choice.speed = 1;
+        o.annotations = ann;
+        out = vnt_encode(&asn_DEF_Pick, &p, &o, reason, sizeof reason);
+        VNT_STREQ(out, "speed : sprint");
+        free(out);
+    }
+
+    VNT_CASE("and reads that identifier back");
+    {
+        void             *st = 0;
+        vn_read_options_t ro;
+        const char       *text = "speed : sprint";
+        memset(&ro, 0, sizeof ro);
+        ro.flags = VN_RF_EOF;
+        ro.annotations = ann;
+        VNT_TRUE(vn_decode(0, &asn_DEF_Pick, &st, &ro, text, strlen(text)).code
+                 == RC_OK);
+        if(st) {
+            VNT_TRUE(((Pick_t *)st)->present == Pick_PR_speed
+                     && ((Pick_t *)st)->choice.speed == 1);
+            ASN_STRUCT_FREE(asn_DEF_Pick, st);
+        }
+    }
+
+    /*
+     * A nested inline definition. asn1c keys it by the whole path, and the
+     * anonymous SEQUENCE between it and Outer contributes only the member name
+     * it was reached through, so the scope has to accumulate.
+     */
+    VNT_CASE("nested inline definitions are keyed by their whole path");
+    VNT_TRUE(vn_annotations_find(ann, "Outer__inner__x") != 0);
+    VNT_TRUE(vn_annotations_find(ann, "Outer__ring__Member__y") != 0);
+
+    VNT_CASE("and both resolve through the encoder");
+    {
+        Outer_t         o;
+        struct Outer__ring__Member elem;
+        struct Outer__ring__Member *elems[1];
+        vn_options_t    eo;
+        memset(&o, 0, sizeof o);
+        memset(&elem, 0, sizeof elem);
+        memset(&eo, 0, sizeof eo);
+        o.inner.x = 1;
+        elem.y = 2;
+        elems[0] = &elem;
+        o.ring.list.array = (struct Outer__ring__Member **)elems;
+        o.ring.list.count = 1;
+        o.ring.list.size = 1;
+        eo.mode = VN_MODE_CANONICAL;
+        eo.annotations = ann;
+        out = vnt_encode(&asn_DEF_Outer, &o, &eo, reason, sizeof reason);
+        VNT_TRUE(out && strstr(out, "alpha") != 0);
+        VNT_TRUE(out && strstr(out, "beta") != 0);
+        if(out && (!strstr(out, "alpha") || !strstr(out, "beta")))
+            fprintf(stderr, "  got: %s\n", out);
         free(out);
     }
 

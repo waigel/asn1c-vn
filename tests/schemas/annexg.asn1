@@ -1,0 +1,101 @@
+-- annexg.asn1: the examples of ITU-T X.680 (02/2021) Annex G, transcribed.
+--
+-- Annex G is the standard's own worked material: G.1 is the personnel record
+-- (schema G.1.2, value G.1.3), G.2 gives per-type usage examples, most with
+-- value notation. Using them as test input means the interpretation of every
+-- case is the standard's, not ours. The annex preamble states an environment
+-- of AUTOMATIC TAGS is assumed.
+--
+-- Left out deliberately: G.2.4 (REAL; this codec rejects it), G.2.7 (the
+-- character quadruple/list value forms, not implemented), G.2.8 (CHARACTER
+-- STRING), G.2.5.2 (its note contradicts the shown hstring in the extracted
+-- text; not transcribable with confidence).
+AnnexG DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+-- G.1.2
+PersonnelRecord ::= [APPLICATION 0] SET {
+    name         Name,
+    title        VisibleString,
+    number       EmployeeNumber,
+    dateOfHire   Date,
+    nameOfSpouse Name,
+    children     SEQUENCE OF ChildInformation DEFAULT {}
+}
+
+ChildInformation ::= SET {
+    name        Name,
+    dateOfBirth Date
+}
+
+Name ::= [APPLICATION 1] SEQUENCE {
+    givenName  VisibleString,
+    initial    VisibleString,
+    familyName VisibleString
+}
+
+EmployeeNumber ::= [APPLICATION 2] INTEGER
+
+Date ::= [APPLICATION 3] VisibleString -- YYYYMMDD
+
+-- G.2.2.2
+DayOfTheMonth ::= INTEGER {first(1), last(31)}
+
+-- G.2.5.1: no named bits, so trailing zero bits are significant.
+G3FacsimilePage ::= BIT STRING
+
+-- G.2.5.3: named bits, so trailing zero bits are NOT significant (22.7).
+DaysOfTheWeek ::= BIT STRING {
+    sunday(0), monday(1), tuesday(2),
+    wednesday(3), thursday(4), friday(5),
+    saturday(6) } (SIZE (0..7))
+
+-- G.2.5.5
+PersonalStatus ::= BIT STRING {
+    married(0), employed(1), veteran(2), collegeGraduate(3) }
+
+-- G.2.6.1
+G4FacsimileImage ::= OCTET STRING
+
+-- G.2.6.2
+Surname ::= PrintableString
+
+-- G.2.9
+PatientIdentifier ::= SEQUENCE {
+    name       VisibleString,
+    roomNumber CHOICE {
+        room       INTEGER,
+        outPatient NULL -- if an out-patient
+    }
+}
+
+-- G.2.10.1
+NamesOfMemberNations ::= SEQUENCE OF VisibleString
+
+-- G.2.10.2
+NamesOfOfficers ::= SEQUENCE {
+    president     VisibleString,
+    vicePresident VisibleString,
+    secretary     VisibleString
+}
+
+-- G.2.11.1 (the [0]..[2] tags of the original are what AUTOMATIC TAGS adds)
+UserName ::= SET {
+    personalName     VisibleString,
+    organizationName VisibleString,
+    countryName      VisibleString
+}
+
+-- G.2.11.4
+Keywords ::= SET OF VisibleString
+
+-- G.2.12.4
+AcmeBadgeNumber ::= [PRIVATE 2] INTEGER
+
+-- G.2.13.1
+FileIdentifier ::= CHOICE {
+    relativeName VisibleString,
+    absoluteName VisibleString,
+    serialNumber INTEGER
+}
+
+END

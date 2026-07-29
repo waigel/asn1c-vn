@@ -29,4 +29,21 @@ Box ::= SEQUENCE {
     pad  OCTET STRING
 }
 
+-- The same inline definition inside a CHOICE. asn1c scopes it as Pick__speed
+-- exactly as for a SEQUENCE member, so the alternative has to establish the
+-- scope on the way down or the entry is unreachable.
+Pick ::= CHOICE {
+    speed INTEGER { crawl(0), sprint(1) },
+    label VisibleString
+}
+
+-- One level deeper. asn1c names these by the whole path that reaches them
+-- (Outer__inner__x, Outer__ring__Member__y), while the anonymous inline
+-- SEQUENCE is called just "SEQUENCE" at runtime, so the scope has to
+-- accumulate on the way down rather than be rebuilt from the nearest parent.
+Outer ::= SEQUENCE {
+    inner SEQUENCE { x INTEGER { alpha(1) } },
+    ring  SEQUENCE OF SEQUENCE { y INTEGER { beta(2) } }
+}
+
 END

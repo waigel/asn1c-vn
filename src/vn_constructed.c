@@ -145,14 +145,27 @@ vn_h_set_of(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
     }
     if(list->count <= 0) return vn_puts(w, " }");
 
-    for(i = 0; i < list->count; i++) {
-        if(i && vn_putc(w, ',') < 0) return -1;
-        if(vn_break(w, level + 1) < 0) return -1;
-        if(!list->array[i])
-            return vn_fail(w, td, sptr,
-                           "list %s element %d is a null pointer",
-                           td->name ? td->name : "(unnamed)", i);
-        if(vn_encode_value(w, elt, list->array[i], level + 1) < 0) return -1;
+    /* asn1c calls an anonymous element type "Member", so that is the step the
+     * scope path takes here: Outer__ring__Member__y. A named element type is
+     * unaffected -- nothing is keyed under that path and the lookup falls back
+     * to the type name. */
+    {
+        char saved[sizeof w->member_key];
+        memcpy(saved, w->member_key, sizeof saved);
+        vn_member_key(w->member_key, sizeof w->member_key, td->name, "Member");
+
+        for(i = 0; i < list->count; i++) {
+            if(i && vn_putc(w, ',') < 0) break;
+            if(vn_break(w, level + 1) < 0) break;
+            if(!list->array[i]) {
+                vn_fail(w, td, sptr, "list %s element %d is a null pointer",
+                        td->name ? td->name : "(unnamed)", i);
+                break;
+            }
+            if(vn_encode_value(w, elt, list->array[i], level + 1) < 0) break;
+        }
+        memcpy(w->member_key, saved, sizeof saved);
+        if(w->failed) return -1;
     }
     if(vn_break(w, level) < 0) return -1;
     return vn_putc(w, '}');
@@ -211,7 +224,18 @@ vn_h_choice(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
         if(vn_puts(w, elm->name) < 0) return -1;
         if(vn_puts(w, " : ") < 0) return -1;
     }
-    return vn_encode_value(w, elm->type, memb, level);
+    /* An inline alternative is scoped like an inline SEQUENCE member -- asn1c
+     * names its enum Pick__speed -- and its descriptor is the shared
+     * asn_DEF_NativeInteger, so the scope has to travel separately. */
+    {
+        char saved[sizeof w->member_key];
+        int  rc;
+        memcpy(saved, w->member_key, sizeof saved);
+        vn_member_key(w->member_key, sizeof w->member_key, td->name, elm->name);
+        rc = vn_encode_value(w, elm->type, memb, level);
+        memcpy(w->member_key, saved, sizeof saved);
+        return rc;
+    }
 }
 
 /*

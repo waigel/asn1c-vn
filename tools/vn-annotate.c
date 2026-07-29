@@ -104,36 +104,6 @@ asn1_name(const char *s) {
     return out;
 }
 
-/*
- * Undo asn1c's C spelling in place.
- *
- * asn1c_make_identifier() replaces every character a C identifier cannot carry
- * with an underscore. X.680 12.3 admits letters, digits and hyphens only, so in
- * legal ASN.1 the hyphen is the only such character and the reverse map is
- * total: a lone underscore was a hyphen.
- *
- * A run of two or more underscores is different -- it is asn1c's scope separator
- * for an inline member (Box__mode) -- and is left exactly as it is. Leaving it
- * alone also keeps the table key equal to the runtime descriptor's name, which
- * is what the encoder matches against.
- */
-static void
-unmangle(char *s) {
-    char *p = s;
-
-    while(*p) {
-        if(*p != '_') {
-            p++;
-            continue;
-        }
-        {
-            char *run = p;
-            while(*p == '_') p++;
-            if(p - run == 1) *run = '-';
-        }
-    }
-}
-
 /* Copy an identifier, returning the count of characters taken. */
 static size_t
 take_ident(const char *p, char *out, size_t outsz) {

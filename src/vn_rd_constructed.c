@@ -35,10 +35,20 @@ vn_rd_member_slot(const asn_TYPE_member_t *elm, void *sptr, void **direct) {
  */
 #define VN_RD_MAX_MEMBERS 512
 
-int
-vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
+/*
+ * SEQUENCE and SET differ in exactly one rule, so they share this.
+ *
+ * 25.20 requires a SEQUENCE's component values to be "in the same order as the
+ * corresponding NamedType sequences", while the NOTE to 27.9 says a SET's "may
+ * appear in any order". Both still require every non-OPTIONAL, non-DEFAULT
+ * member to be present exactly once.
+ */
+static int
+vn_rd_components(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr,
+                 int ordered) {
     const asn_SEQUENCE_specifics_t *specs =
         (const asn_SEQUENCE_specifics_t *)td->specifics;
+    const char   *what = ordered ? "SEQUENCE" : "SET";
     size_t        from = r->pos;
     vn_token_t    tok;
     void         *st;
@@ -48,7 +58,7 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     unsigned char seen[VN_RD_MAX_MEMBERS / 8];
 
     if(!specs)
-        return vn_rd_fail(r, from, "SEQUENCE %s has no specifics",
+        return vn_rd_fail(r, from, "%s %s has no specifics", what,
                           td->name ? td->name : "(unnamed)");
     if(td->elements_count > VN_RD_MAX_MEMBERS)
         return vn_rd_fail(r, from, "%s has more than %d members",
@@ -60,7 +70,7 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
         if(tok.kind == VT_INCOMPLETE || tok.kind == VT_END)
             return vn_rd_more(r, from);
         return vn_rd_fail(r, from, "expected { to start %s",
-                          td->name ? td->name : "a SEQUENCE");
+                          td->name ? td->name : what);
     }
 
     st = vn_rd_alloc(r, sptr, specs->struct_size);
@@ -92,11 +102,13 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             return vn_rd_fail(r, item, "expected a comma between members");
 
         /*
-         * X.680 requires the components in declaration order, so the search
-         * starts where the previous member left off. That also rejects a
-         * duplicate, since its index lies before `next`.
+         * In a SEQUENCE the components come in declaration order, so the search
+         * starts where the previous member left off; that also rejects a
+         * duplicate, whose index lies before `next`. A SET admits any order
+         * (27.9), so its search starts from the beginning and only the
+         * already-seen bitmap rejects a repeat.
          */
-        for(i = next; i < td->elements_count; i++) {
+        for(i = ordered ? next : 0; i < td->elements_count; i++) {
             const char *nm = td->elements[i].name;
             if(nm && strlen(nm) == tok.body_len
                && memcmp(nm, tok.body, tok.body_len) == 0)
@@ -104,7 +116,7 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
         }
         if(i >= td->elements_count) {
             unsigned j;
-            for(j = 0; j < next; j++) {
+            for(j = 0; ordered && j < next; j++) {
                 const char *nm = td->elements[j].name;
                 if(nm && strlen(nm) == tok.body_len
                    && memcmp(nm, tok.body, tok.body_len) == 0)
@@ -115,9 +127,13 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
                                       td->name ? td->name : "");
             }
             return vn_rd_fail(r, item, "%s has no member '%.*s'",
-                              td->name ? td->name : "this SEQUENCE",
+                              td->name ? td->name : what,
                               (int)tok.body_len, tok.body);
         }
+        if(seen[i / 8] & (unsigned char)(1u << (i % 8)))
+            return vn_rd_fail(r, item, "member '%.*s' appears twice in %s",
+                              (int)tok.body_len, tok.body,
+                              td->name ? td->name : what);
 
         slot = vn_rd_member_slot(&td->elements[i], st, &direct);
         {
@@ -158,12 +174,22 @@ vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             }
             if(!elm->optional)
                 return vn_rd_fail(r, from, "%s is missing mandatory member '%s'",
-                                  td->name ? td->name : "this SEQUENCE",
+                                  td->name ? td->name : what,
                                   elm->name ? elm->name : "?");
         }
     }
 
     return VR_OK;
+}
+
+int
+vn_rd_sequence(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
+    return vn_rd_components(r, td, sptr, 1);
+}
+
+int
+vn_rd_set(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
+    return vn_rd_components(r, td, sptr, 0);
 }
 
 int
@@ -219,7 +245,16 @@ vn_rd_set_of(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
         /* Re-present this element's own start; parse it into ctx->ptr so an
          * abandoned partial element is still reachable for the free function. */
         r->pos = item;
-        rc = vn_rd_value(r, elt, &ctx->ptr);
+        {
+            char saved[sizeof r->member_key];
+            /* "Member" is what asn1c calls an anonymous element type, so that
+             * is this step of the scope path; see the writer's counterpart. */
+            memcpy(saved, r->member_key, sizeof saved);
+            vn_member_key(r->member_key, sizeof r->member_key, td->name,
+                          "Member");
+            rc = vn_rd_value(r, elt, &ctx->ptr);
+            memcpy(r->member_key, saved, sizeof saved);
+        }
         if(rc != VR_OK) return rc;
         if(ASN_SET_ADD(list, ctx->ptr) != 0) {
             ASN_STRUCT_FREE(*elt, ctx->ptr);
@@ -297,5 +332,16 @@ vn_rd_choice(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     }
 
     slot = vn_rd_member_slot(&td->elements[i], st, &direct);
-    return vn_rd_value(r, td->elements[i].type, slot);
+    /* Scope the alternative, as the writer does: an inline one is Pick__speed
+     * in the annotation table but arrives here as asn_DEF_NativeInteger. */
+    {
+        char saved[sizeof r->member_key];
+        int  rc;
+        memcpy(saved, r->member_key, sizeof saved);
+        vn_member_key(r->member_key, sizeof r->member_key, td->name,
+                      td->elements[i].name);
+        rc = vn_rd_value(r, td->elements[i].type, slot);
+        memcpy(r->member_key, saved, sizeof saved);
+        return rc;
+    }
 }

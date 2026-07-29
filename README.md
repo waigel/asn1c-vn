@@ -188,6 +188,13 @@ make vn-annotate
 equally valid X.680. The table is also what lets the reader accept the identifiers
 reference tooling writes.
 
+An inline definition — `algorithmID INTEGER { milenage(1), … }` written in place
+rather than as its own type — has no descriptor of its own to look up by, since
+asn1c points it at the shared `asn_DEF_NativeInteger`. It is keyed instead by the
+path that reaches it, `AlgoParameter__algorithmID`, which is what asn1c names the
+enum. The path accumulates through anonymous types, so a nested one is
+`Outer__inner__x`, or `Outer__ring__Member__y` for a list element.
+
 Set it through `vn_options_t.annotations` / `vn_read_options_t.annotations`, or
 link the generated file and let the weak default pick it up.
 
@@ -243,6 +250,8 @@ These are properties of asn1c's runtime ABI rather than choices:
   to byte-identical interoperability with reference value notation; see below.
 
 - **BIT STRING named bits and INTEGER named numbers** need the annotation table.
+  So does X.680 §22.7: trailing zero bits are insignificant only when the type has
+  a named bit list, and the table is the only place that fact survives.
 
 - **An unset DEFAULT member cannot be told from an absent OPTIONAL one** where
   asn1c dropped the value, so it is omitted.
@@ -252,7 +261,7 @@ These are properties of asn1c's runtime ABI rather than choices:
 ## Testing
 
 ```sh
-make check          # 18 test binaries
+make check          # 19 test binaries
 ```
 
 Layered, in increasing strength:
@@ -267,7 +276,14 @@ Layered, in increasing strength:
    sequences must agree. asn1c's XER encoder shares no code with this one.
 4. **Round trip**, the acceptance criterion: DER → value notation → DER,
    byte-compared.
-5. **Fuzzing** the reader, the only part that takes input it did not produce.
+5. **The standard's own examples.** X.680 Annex G is transcribed into
+   `tests/schemas/annexg.asn1` and `tests/t_annexg.c`, each case labelled with the
+   subclause it came from. Where the annex asserts that two spellings denote one
+   value — `{sunday, monday, wednesday}` and `'1101000'B` under §22.7 — or that
+   two denote different ones — `'1101'B` and `'1101000'B` without a named bit
+   list, per the note to G.2.5.1 — the test asserts the same. Nothing here is our
+   reading of the standard; it is the standard's own worked material.
+6. **Fuzzing** the reader, the only part that takes input it did not produce.
 
 Against real data:
 

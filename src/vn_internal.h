@@ -7,6 +7,13 @@
 #include <sys/types.h>
 #include "vn_encoder.h"
 
+/*
+ * Longest scope path the annotation lookup can hold. A path that would exceed
+ * it is truncated and simply stops matching, so the numeric form is used --
+ * a readability loss, never a wrong identifier.
+ */
+#define VN_MEMBER_KEY_MAX 192
+
 typedef struct vn_writer_s {
     asn_app_consume_bytes_f *cb;
     void       *key;
@@ -22,15 +29,19 @@ typedef struct vn_writer_s {
     const asn_TYPE_descriptor_t *failed_td;
     const void                  *failed_sptr;
     /*
-     * Scoped key for the member being written, e.g. "AlgoParameter__algorithmID".
+     * Scope path of the member being written, e.g. "AlgoParameter__algorithmID".
      *
      * An inline `algorithmID INTEGER { ... }` member has no descriptor of its own
      * -- asn1c points it straight at asn_DEF_NativeInteger, whose name is
-     * "INTEGER" -- so its identifiers cannot be found by type name. Parent plus
-     * member name is the key that reaches them. asn1c threads opt_mname through
-     * its XER codec for the same reason.
+     * "INTEGER" -- so its identifiers cannot be found by type name. The path
+     * that reaches it is the key that can. asn1c threads opt_mname through its
+     * XER codec for the same reason.
+     *
+     * It is a path rather than one parent plus one member because asn1c names a
+     * nested inline definition after the whole descent: Outer__inner__x, and
+     * Outer__ring__Member__y for a list element.
      */
-    char member_key[192];
+    char member_key[VN_MEMBER_KEY_MAX];
 } vn_writer_t;
 
 /* --- vn_writer.c ---------------------------------------------------------- */
@@ -46,7 +57,8 @@ int  vn_fail(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
              const char *fmt, ...);                    /* always returns -1 */
 int  vn_is_annotated(const vn_writer_t *w);
 
-/* Build "<Parent>__<member>" into dst; empty when either part is missing. */
+/* Extend the scope path in dst with one member name. `parent` starts the
+ * path when dst is still empty; empty result when a part is missing. */
 void vn_member_key(char *dst, size_t dstsz, const char *parent,
                    const char *member);
 /* Names for td, preferring the scoped key over the type name. */
@@ -139,7 +151,7 @@ typedef struct vn_reader_s {
     char                   *errbuf;
     size_t                  errlen;
     int                     eof;
-    char                    member_key[192]; /* see vn_writer_t.member_key */
+    char                    member_key[VN_MEMBER_KEY_MAX]; /* see vn_writer_t */
 } vn_reader_t;
 
 /* vn_reader.c */
@@ -167,6 +179,7 @@ int vn_rd_any(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
 
 /* vn_rd_constructed.c */
 int vn_rd_sequence(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
+int vn_rd_set(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
 int vn_rd_set_of(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
 int vn_rd_choice(vn_reader_t *, const asn_TYPE_descriptor_t *, void **);
 

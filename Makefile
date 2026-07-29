@@ -100,7 +100,7 @@ vn-annotate: tools/vn-annotate.c
 
 # ---- tests ----------------------------------------------------------------
 
-SCHEMAS := prim constructed strings opentype kitchen annotate
+SCHEMAS := prim constructed strings opentype kitchen annotate annexg
 TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate t_roundtrip t_read_negative
 
 t_link_SCHEMA   := prim
@@ -156,18 +156,25 @@ $(foreach t,$(TESTS),$(eval $(call TEST_RULE,$(t))))
 
 # t_annogen checks vn-annotate itself, end to end: the table it generates from
 # the annotate schema's headers is compiled in, so it needs a rule of its own.
-tests/gen/annotate_table.c: vn-annotate tests/gen/annotate/.stamp
-	./vn-annotate tests/gen/annotate > $@
+# t_annexg needs the same treatment for the Annex G schema's identifiers.
+tests/gen/%_table.c: vn-annotate tests/gen/%/.stamp
+	./vn-annotate tests/gen/$* > $@
 
-tests/bin/t_annogen: tests/t_annogen.c tests/gen/annotate_table.c \
-                     $(TEST_SUPPORT) $(VN_SRCS) tests/gen/annotate/.built
+define ANNOTATED_TEST_RULE
+tests/bin/$(1): tests/$(1).c tests/gen/$(2)_table.c \
+                $$(TEST_SUPPORT) $$(VN_SRCS) tests/gen/$(2)/.built
 	@mkdir -p tests/bin
-	$(CC) $(ALL_CFLAGS) -Itests -Itests/gen/annotate \
-	    tests/t_annogen.c tests/gen/annotate_table.c $(TEST_SUPPORT) $(VN_SRCS) \
-	    tests/gen/annotate/*.o -o $@ -lm
+	$$(CC) $$(ALL_CFLAGS) -Itests -Itests/gen/$(2) \
+	    tests/$(1).c tests/gen/$(2)_table.c $$(TEST_SUPPORT) $$(VN_SRCS) \
+	    tests/gen/$(2)/*.o -o $$@ -lm
+endef
+$(eval $(call ANNOTATED_TEST_RULE,t_annogen,annotate))
+$(eval $(call ANNOTATED_TEST_RULE,t_annexg,annexg))
 
-check: check-skeldir $(addprefix tests/bin/,$(TESTS) t_annogen)
-	@rc=0; for t in $(addprefix tests/bin/,$(TESTS) t_annogen); do \
+ANNOTATED_TESTS := t_annogen t_annexg
+
+check: check-skeldir $(addprefix tests/bin/,$(TESTS) $(ANNOTATED_TESTS))
+	@rc=0; for t in $(addprefix tests/bin/,$(TESTS) $(ANNOTATED_TESTS)); do \
 	    ./$$t || rc=1; \
 	done; exit $$rc
 

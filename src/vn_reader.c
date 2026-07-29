@@ -498,6 +498,35 @@ vn_rd_octet_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr)
     return VR_OK;
 }
 
+/*
+ * Drop trailing 0 bits, and clear the padding of the last octet.
+ *
+ * 22.7: when a NamedBitList defines the type, encoding rules "are free to add
+ * (or remove) arbitrarily any trailing 0 bits", so two spellings differing only
+ * in those bits are one abstract value -- the standard says as much in the notes
+ * to G.2.5.3 and G.2.5.5, and the example under 22.18 reads 'A98A'H as 15 bits
+ * rather than 16 for exactly this reason. DER requires the shortest form
+ * (X.690 11.2.2), so normalising here is what makes an hstring written by
+ * another tool re-encode correctly.
+ *
+ * Without a NamedBitList the trailing bits are significant -- G.2.5.1 notes that
+ * '1101'B and '1101000'B are then distinct values -- so this is never applied
+ * to such a type.
+ */
+static void
+vn_rd_trim_named_bits(uint8_t *bytes, size_t *len, int *unused) {
+    size_t nbits = *len * 8 - (size_t)*unused;
+
+    while(nbits > 0) {
+        size_t last = nbits - 1;
+        if(bytes[last / 8] & (uint8_t)(0x80u >> (last % 8))) break;
+        nbits--;
+    }
+    *len = (nbits + 7) / 8;
+    *unused = (int)(*len * 8 - nbits);
+    if(*len && *unused) bytes[*len - 1] &= (uint8_t)(0xffu << *unused);
+}
+
 int
 vn_rd_bit_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
     size_t        from = r->pos;
@@ -518,6 +547,8 @@ vn_rd_bit_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             vn_names_for(r->annotations, r->member_key, td);
         size_t  highest = 0;
         uint8_t tmp[64];
+        /* 22.9 spells IdentifierList comma-separated, as everywhere else. */
+        int     after_name = 0, after_comma = 0;
 
         if(!names || !names->is_bit_string)
             return vn_rd_fail(r, from,
@@ -529,10 +560,24 @@ vn_rd_bit_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             vn_token_e k = vn_rd_token(r, &tok);
             size_t     i;
             if(k == VT_INCOMPLETE || k == VT_END) return vn_rd_more(r, from);
-            if(k == VT_RBRACE) break;
-            if(k == VT_COMMA) continue;
+            if(k == VT_RBRACE) {
+                if(after_comma)
+                    return vn_rd_fail(r, item, "trailing comma before }");
+                break;
+            }
+            if(k == VT_COMMA) {
+                if(!after_name)
+                    return vn_rd_fail(r, item, "comma with no preceding bit name");
+                after_comma = 1;
+                after_name = 0;
+                continue;
+            }
             if(k != VT_IDENT)
                 return vn_rd_fail(r, item, "expected a bit name or }");
+            if(after_name)
+                return vn_rd_fail(r, item, "expected a comma between bit names");
+            after_name = 1;
+            after_comma = 0;
             for(i = 0; i < names->count; i++) {
                 size_t pos_bit;
                 if(strlen(names->values[i].name) != tok.body_len) continue;
@@ -569,6 +614,12 @@ vn_rd_bit_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
 
     rc = vn_rd_bytes(r, &tok, &bytes, &len, &unused, 0);
     if(rc != VR_OK) return rc;
+    {
+        const vn_type_names_t *names =
+            vn_names_for(r->annotations, r->member_key, td);
+        if(names && names->is_bit_string)
+            vn_rd_trim_named_bits(bytes, &len, &unused);
+    }
     bs = (BIT_STRING_t *)vn_rd_alloc(r, sptr, sizeof(*bs));
     if(!bs) {
         free(bytes);
@@ -751,7 +802,7 @@ static const struct vn_rd_dispatch_s {
     {&asn_OP_OBJECT_IDENTIFIER, vn_rd_oid},
     {&asn_OP_RELATIVE_OID, vn_rd_relative_oid},
     {&asn_OP_SEQUENCE, vn_rd_sequence},
-    {&asn_OP_SET, vn_rd_sequence},
+    {&asn_OP_SET, vn_rd_set},
     {&asn_OP_SEQUENCE_OF, vn_rd_set_of},
     {&asn_OP_SET_OF, vn_rd_set_of},
     {&asn_OP_CHOICE, vn_rd_choice},
