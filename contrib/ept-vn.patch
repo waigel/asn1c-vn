@@ -1,0 +1,81 @@
+--- a/converter-example.c	2026-07-29 12:42:44
++++ b/converter-example.c	2026-07-29 12:42:44
+@@ -21,7 +21,15 @@
+ #include <unistd.h>    /* for isatty(3) */
+ #include <asn_application.h>
+ #include <asn_internal.h>    /* for ASN__DEFAULT_STACK_MAX */
++#include <vn_encoder.h>  /* asn1c-vn: ASN.1 value notation output */
+ 
++/* asn1c-vn: -ovn / -ovnc / -ovna select value notation output. It cannot go
++ * through asn_encode(), which dispatches on enum asn_transfer_syntax, so it
++ * is handled as its own branch at the encode site below. */
++static int opt_vn = 0;
++static vn_mode_e opt_vn_mode = VN_MODE_PRETTY;
++static unsigned long opt_vn_count = 0;
++
+ /* Convert "Type" defined by -DPDU into "asn_DEF_Type" */
+ #ifdef PDU
+ #define    ASN_DEF_PDU(t)    asn_DEF_ ## t
+@@ -240,6 +248,16 @@
+         }
+         break;
+     case 'o':
++        if(strcmp(optarg, "vn") == 0 || strcmp(optarg, "vnc") == 0
++           || strcmp(optarg, "vna") == 0) {
++            opt_vn = 1;
++            opt_vn_mode = optarg[2] == 'c'   ? VN_MODE_CANONICAL
++                          : optarg[2] == 'a' ? VN_MODE_ANNOTATED
++                                              : VN_MODE_PRETTY;
++            /* Anything other than ATS_INVALID, so the encode branch runs. */
++            osyntax = ATS_NONSTANDARD_PLAINTEXT;
++            break;
++        }
+         sel = ats_by_name(optarg, anyPduType, output_encodings);
+         if(sel) {
+             osyntax = sel->syntax;
+@@ -360,6 +378,9 @@
+                         (sel->syntax == isyntax) ? " (DEFAULT)" : "");
+             }
+         }
++        fprintf(stderr, "  -ovn        Output as ASN.1 value notation (X.680)\n");
++        fprintf(stderr, "  -ovnc       ... canonical: deterministic, for diffing\n");
++        fprintf(stderr, "  -ovna       ... annotated: adds X.680 comments\n");
+         for(sel = output_encodings; sel->name; sel++) {
+             if(ats_by_name(sel->name, anyPduType, sel)) {
+                 fprintf(stderr, "  -o%s%s       %s%s\n", sel->name,
+@@ -504,8 +525,35 @@
+                 fprintf(stderr, "%s: decoded successfully\n", name);
+ #endif
+             } else {
++                if(opt_vn) {
++                    /* Value notation. pduType is the runtime-selected
++                     * descriptor, so -p works here as for any other
++                     * output format. Several values in one input become
++                     * a sequence of value assignments. */
++                    vn_options_t vo;
++                    char vreason[256];
++
++                    memset(&vo, 0, sizeof vo);
++                    vo.mode = opt_vn_mode;
++                    vreason[0] = 0;
++                    vo.errbuf = vreason;
++                    vo.errlen = sizeof vreason;
++                    if(opt_vn_count++) fputc(0x0a, stdout);
++                    printf("value%lu %s ::= ", opt_vn_count,
++                           pduType->name ? pduType->name : "Value");
++                    if(vn_fprint(stdout, pduType, structure, &vo) < 0) {
++                        fprintf(stderr,
++                                "%s: cannot render %s as value notation: %s\n",
++                                name, pduType->name,
++                                vreason[0] ? vreason : "unknown error");
++                        exit(EX_UNAVAILABLE);
++                    }
++                    fputc(0x0a, stdout);
++                    erv.encoded = 0;
++                } else {
+                 erv = asn_encode(NULL, osyntax, pduType, structure, write_out,
+                                  binary_out);
++                }
+ 
+                 if(erv.encoded == -1) {
+                     fprintf(stderr, "%s: Cannot convert %s into %s\n", name,
