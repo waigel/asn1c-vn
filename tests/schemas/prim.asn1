@@ -14,6 +14,7 @@ Holder ::= SEQUENCE {
     data  OCTET STRING,
     bits  BIT STRING,
     oid   OBJECT IDENTIFIER,
+    roid  RELATIVE-OID,
     real  REAL OPTIONAL
 }
 

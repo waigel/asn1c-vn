@@ -11,7 +11,10 @@
 #include <NULL.h>
 #include <NativeEnumerated.h>
 #include <NativeInteger.h>
+#include <BIT_STRING.h>
+#include <OBJECT_IDENTIFIER.h>
 #include <OCTET_STRING.h>
+#include "RELATIVE-OID.h" /* asn1c spells this filename with a hyphen */
 #include "vn_internal.h"
 
 /*
@@ -75,6 +78,98 @@ vn_h_octet_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
     const OCTET_STRING_t *os = (const OCTET_STRING_t *)sptr;
     (void)td;
     return vn_put_hex(w, os->buf, os->buf ? os->size : 0, level);
+}
+
+/*
+ * BIT STRING. X.680 allows bstring and hstring; an hstring carries exactly four
+ * bits per digit, so it is only usable when the bit count divides by four.
+ * Choosing bstring otherwise means no padding bit is ever invented or lost.
+ * Named bit lists are not retained by asn1c at runtime, so `{ keyCert }` form
+ * is out of reach; see README.
+ */
+int
+vn_h_bit_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
+                const void *sptr, int level) {
+    static const char hexdigits[] = "0123456789ABCDEF";
+    const BIT_STRING_t *bs = (const BIT_STRING_t *)sptr;
+    size_t nbits, i;
+
+    (void)level;
+    if(bs->bits_unused < 0 || bs->bits_unused > 7)
+        return vn_fail(w, td, sptr,
+                       "BIT STRING has bits_unused = %d, which must be 0..7",
+                       bs->bits_unused);
+    nbits = (bs->buf && bs->size > 0)
+                ? bs->size * 8 - (size_t)bs->bits_unused
+                : 0;
+
+    if(nbits > 0 && nbits % 4 == 0) {
+        size_t ndigits = nbits / 4;
+        if(vn_putc(w, '\'') < 0) return -1;
+        for(i = 0; i < ndigits; i++) {
+            unsigned nib = bs->buf[i / 2];
+            nib = (i % 2 == 0) ? (nib >> 4) : (nib & 0x0fu);
+            if(vn_putc(w, hexdigits[nib]) < 0) return -1;
+        }
+        return vn_puts(w, "'H");
+    }
+
+    if(vn_putc(w, '\'') < 0) return -1;
+    for(i = 0; i < nbits; i++) {
+        unsigned bit = (bs->buf[i / 8] >> (7 - i % 8)) & 1u;
+        if(vn_putc(w, bit ? '1' : '0') < 0) return -1;
+    }
+    return vn_puts(w, "'B");
+}
+
+/* OBJECT IDENTIFIER and RELATIVE-OID share the form { arc arc arc }. */
+static int
+vn_put_arcs(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+            ssize_t (*get_arcs)(const void *, asn_oid_arc_t *, size_t)) {
+    asn_oid_arc_t arcs[32];
+    const size_t slots = sizeof arcs / sizeof arcs[0];
+    ssize_t count, i;
+
+    count = get_arcs(sptr, arcs, slots);
+    if(count < 0)
+        return vn_fail(w, td, sptr, "cannot read the arcs of %s",
+                       td->name ? td->name : "(unnamed)");
+    /* get_arcs reports the true arc count even when it exceeds the slots. */
+    if((size_t)count > slots)
+        return vn_fail(w, td, sptr,
+                       "%s has %d arcs, more than the %u this encoder holds",
+                       td->name ? td->name : "(unnamed)", (int)count,
+                       (unsigned)slots);
+
+    if(vn_putc(w, '{') < 0) return -1;
+    for(i = 0; i < count; i++)
+        if(vn_printf(w, " %lu", (unsigned long)arcs[i]) < 0) return -1;
+    return vn_puts(w, " }");
+}
+
+static ssize_t
+vn_oid_arcs(const void *sptr, asn_oid_arc_t *arcs, size_t slots) {
+    return OBJECT_IDENTIFIER_get_arcs((const OBJECT_IDENTIFIER_t *)sptr, arcs,
+                                      slots);
+}
+
+static ssize_t
+vn_roid_arcs(const void *sptr, asn_oid_arc_t *arcs, size_t slots) {
+    return RELATIVE_OID_get_arcs((const RELATIVE_OID_t *)sptr, arcs, slots);
+}
+
+int
+vn_h_oid(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
+         int level) {
+    (void)level;
+    return vn_put_arcs(w, td, sptr, vn_oid_arcs);
+}
+
+int
+vn_h_relative_oid(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
+                  const void *sptr, int level) {
+    (void)level;
+    return vn_put_arcs(w, td, sptr, vn_roid_arcs);
 }
 
 /*

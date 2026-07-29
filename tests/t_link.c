@@ -18,7 +18,7 @@ main(void) {
 
     VNT_CASE("descriptor is reachable");
     VNT_TRUE(asn_DEF_Holder.op != 0);
-    VNT_TRUE(asn_DEF_Holder.elements_count == 8);
+    VNT_TRUE(asn_DEF_Holder.elements_count == 9);
 
     VNT_CASE("a type with no handler fails loudly");
     VNT_TRUE(vnt_encode_fails(&asn_DEF_Holder, h, 0, reason, sizeof reason));

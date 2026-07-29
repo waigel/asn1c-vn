@@ -65,7 +65,10 @@ static const struct vn_dispatch_s {
     { &asn_OP_SET,              vn_h_sequence           },
     { &asn_OP_SEQUENCE_OF,      vn_h_set_of             },
     { &asn_OP_SET_OF,           vn_h_set_of             },
-    { &asn_OP_CHOICE,           vn_h_choice             }
+    { &asn_OP_CHOICE,           vn_h_choice             },
+    { &asn_OP_BIT_STRING,       vn_h_bit_string         },
+    { &asn_OP_OBJECT_IDENTIFIER, vn_h_oid               },
+    { &asn_OP_RELATIVE_OID,     vn_h_relative_oid       }
 };
 
 int
