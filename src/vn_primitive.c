@@ -11,6 +11,7 @@
 #include <NULL.h>
 #include <NativeEnumerated.h>
 #include <NativeInteger.h>
+#include <OCTET_STRING.h>
 #include "vn_internal.h"
 
 /*
@@ -38,6 +39,42 @@ vn_h_null(vn_writer_t *w, const asn_TYPE_descriptor_t *td, const void *sptr,
     (void)sptr;
     (void)level;
     return vn_puts(w, "NULL");
+}
+
+/*
+ * Emit bytes as an X.680 hstring: 'AABB'H, uppercase.
+ *
+ * When line_width is set, wrap on an even digit boundary so a byte is never
+ * split across lines. Shared with BIT STRING and bare ANY.
+ */
+int
+vn_put_hex(vn_writer_t *w, const unsigned char *buf, size_t len, int level) {
+    static const char hexdigits[] = "0123456789ABCDEF";
+    size_t i, on_line = 0;
+    int budget = w->line_width - (level + 1) * w->indent_width;
+
+    /* Keep a usable budget even at deep nesting levels. */
+    if(budget < 8) budget = 8;
+
+    if(vn_putc(w, '\'') < 0) return -1;
+    for(i = 0; i < len; i++) {
+        if(w->line_width > 0 && on_line + 2 > (size_t)budget) {
+            if(vn_break(w, level + 1) < 0) return -1;
+            on_line = 0;
+        }
+        if(vn_putc(w, hexdigits[buf[i] >> 4]) < 0) return -1;
+        if(vn_putc(w, hexdigits[buf[i] & 0x0f]) < 0) return -1;
+        on_line += 2;
+    }
+    return vn_puts(w, "'H");
+}
+
+int
+vn_h_octet_string(vn_writer_t *w, const asn_TYPE_descriptor_t *td,
+                  const void *sptr, int level) {
+    const OCTET_STRING_t *os = (const OCTET_STRING_t *)sptr;
+    (void)td;
+    return vn_put_hex(w, os->buf, os->buf ? os->size : 0, level);
 }
 
 /*
