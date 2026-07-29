@@ -2,5 +2,8 @@
 *.o
 *.a
 /asn1vn
-# asn1c-generated code for the test schemas
+*.dSYM/
+
+# test binaries, and the asn1c-generated code they link against
+/tests/bin/
 /tests/gen/

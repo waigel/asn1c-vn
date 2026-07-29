@@ -1,5 +1,0 @@
----
-triple:          'arm64-apple-darwin'
-binary-path:     'tests/bin/t_writer'
-relocations:     []
-...
