@@ -29,6 +29,41 @@ vt_ident_char(char c) {
     return vt_ident_start(c) || (c >= '0' && c <= '9') || c == '-' || c == '_';
 }
 
+/*
+ * 11.8: "The NON-BREAKING HYPHEN and the HYPHEN-MINUS should be treated as
+ * identical in all names", with the note that My-Type is one name written
+ * either way. U+2011 is three bytes in UTF-8, so it has to be recognised as a
+ * unit rather than character by character.
+ */
+#define VT_NBH_LEN 3
+
+static int
+vt_is_nbh(const char *buf, size_t size, size_t p) {
+    return p + VT_NBH_LEN <= size && (unsigned char)buf[p] == 0xe2
+           && (unsigned char)buf[p + 1] == 0x80
+           && (unsigned char)buf[p + 2] == 0x91;
+}
+
+/* A truncated U+2011 at the end of the buffer: the token may still continue. */
+static int
+vt_nbh_partial(const char *buf, size_t size, size_t p) {
+    static const unsigned char nbh[VT_NBH_LEN] = {0xe2, 0x80, 0x91};
+    size_t                     i;
+
+    if(size - p >= VT_NBH_LEN) return 0;
+    for(i = 0; p + i < size; i++)
+        if((unsigned char)buf[p + i] != nbh[i]) return 0;
+    return p < size;
+}
+
+/* Bytes of the identifier character at p, or 0 if there is none. */
+static size_t
+vt_ident_run(const char *buf, size_t size, size_t p) {
+    if(vt_ident_char(buf[p])) return 1;
+    if(vt_is_nbh(buf, size, p)) return VT_NBH_LEN;
+    return 0;
+}
+
 static int
 vt_digit(char c) {
     return c >= '0' && c <= '9';
@@ -197,7 +232,19 @@ vn_token_next(const char *buf, size_t size, int eof, size_t *pos,
 
     if(vt_ident_start(buf[p])) {
         size_t q = p;
-        while(q < size && vt_ident_char(buf[q])) q++;
+        for(;;) {
+            size_t n;
+            if(q >= size) break;
+            /* A U+2011 cut in half by the buffer edge is not "no identifier
+             * character"; it is one that has not arrived yet. */
+            if(vt_nbh_partial(buf, size, q) && !eof) {
+                tok->kind = VT_INCOMPLETE;
+                return tok->kind;
+            }
+            n = vt_ident_run(buf, size, q);
+            if(!n) break;
+            q += n;
+        }
         if(q >= size && !eof) {
             tok->kind = VT_INCOMPLETE; /* the identifier may continue */
             return tok->kind;
@@ -215,9 +262,35 @@ vn_token_next(const char *buf, size_t size, int eof, size_t *pos,
     return tok->kind;
 }
 
+/*
+ * Compare an identifier body with a name from the schema.
+ *
+ * The single place that knows a NON-BREAKING HYPHEN stands for a HYPHEN-MINUS
+ * (11.8); a plain length-and-memcmp cannot, since the two spellings differ in
+ * length. Every identifier the reader matches -- member names, alternatives,
+ * enumerators, named numbers, named bits -- comes through here.
+ */
+int
+vn_ident_eq(const char *body, size_t body_len, const char *name,
+            size_t name_len) {
+    size_t i = 0, j = 0;
+
+    while(i < body_len && j < name_len) {
+        char   c = body[i];
+        size_t adv = 1;
+        if(vt_is_nbh(body, body_len, i)) {
+            c = '-';
+            adv = VT_NBH_LEN;
+        }
+        if(c != name[j]) return 0;
+        i += adv;
+        j++;
+    }
+    return i == body_len && j == name_len;
+}
+
 int
 vn_token_is(const vn_token_t *tok, const char *word) {
-    size_t n = strlen(word);
-    return tok->kind == VT_IDENT && tok->body_len == n
-           && memcmp(tok->body, word, n) == 0;
+    return tok->kind == VT_IDENT
+           && vn_ident_eq(tok->body, tok->body_len, word, strlen(word));
 }

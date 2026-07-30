@@ -134,6 +134,9 @@ typedef struct vn_token_s {
 vn_token_e vn_token_next(const char *buf, size_t size, int eof, size_t *pos,
                          vn_token_t *tok);
 int        vn_token_is(const vn_token_t *tok, const char *word);
+/* Identifier equality, seeing a NON-BREAKING HYPHEN as a hyphen (11.8). */
+int        vn_ident_eq(const char *body, size_t body_len, const char *name,
+                       size_t name_len);
 
 typedef enum {
     VR_OK = 0,

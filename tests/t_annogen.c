@@ -19,6 +19,7 @@
 #include "Count.h"
 #include "Wide.h"
 #include "Slot.h"
+#include "Hyphen-Probe.h"
 
 extern const vn_annotations_t vn_generated_annotations;
 
@@ -328,6 +329,96 @@ main(void) {
             free(out);
         }
     }
+
+    /*
+     * 11.8: "The NON-BREAKING HYPHEN and the HYPHEN-MINUS should be treated as
+     * identical in all names", with the note that My-Type is one name either
+     * way. U+2011 is three bytes in UTF-8, so a plain length-and-memcmp match
+     * cannot see through it. Every kind of identifier the reader matches is
+     * covered here: a member name, a named number, an enumerator and a named
+     * bit.
+     *
+     * The escape is kept in its own literal because "\xe2\x80\x91f" would
+     * otherwise scan as one over-long hex escape.
+     */
+#define NBH "\xe2\x80\x91"
+    VNT_CASE("a non-breaking hyphen names the same thing as a hyphen");
+    {
+        static const char plain[] =
+            "{ first-field one-value, second-field plain-red,"
+            "  third-field { low-bit } }";
+        static const char nbh[] =
+            "{ first" NBH "field one" NBH "value,"
+            "  second" NBH "field plain" NBH "red,"
+            "  third" NBH "field { low" NBH "bit } }";
+        void             *a = 0, *b = 0;
+        vn_read_options_t ro;
+        char              reason2[200];
+
+        memset(&ro, 0, sizeof ro);
+        ro.flags = VN_RF_EOF;
+        ro.annotations = ann;
+        ro.errbuf = reason2;
+        ro.errlen = sizeof reason2;
+        reason2[0] = '\0';
+
+        VNT_TRUE(vn_decode(0, &asn_DEF_Hyphen_Probe, &a, &ro, plain,
+                           sizeof plain - 1)
+                     .code
+                 == RC_OK);
+        if(vn_decode(0, &asn_DEF_Hyphen_Probe, &b, &ro, nbh, sizeof nbh - 1)
+               .code
+           != RC_OK) {
+            fprintf(stderr, "  non-breaking hyphen rejected: %s\n", reason2);
+            vnt_failures++;
+        }
+        if(a && b)
+            VNT_TRUE(asn_DEF_Hyphen_Probe.op->compare_struct(
+                         &asn_DEF_Hyphen_Probe, a, b)
+                     == 0);
+        if(a) ASN_STRUCT_FREE(asn_DEF_Hyphen_Probe, a);
+        if(b) ASN_STRUCT_FREE(asn_DEF_Hyphen_Probe, b);
+    }
+
+    /*
+     * The same input one byte at a time. A three-byte U+2011 straddling the
+     * buffer edge must read as "the token has not finished" rather than as its
+     * end, which is the case a whole-buffer test can never reach.
+     */
+    VNT_CASE("a non-breaking hyphen split across presentations still parses");
+    {
+        static const char nbh[] =
+            "{ first" NBH "field one" NBH "value,"
+            "  second" NBH "field plain" NBH "red,"
+            "  third" NBH "field { low" NBH "bit } }";
+        const size_t      len = sizeof nbh - 1;
+        void             *st = 0;
+        vn_read_options_t ro;
+        size_t            fed;
+        int               guard, done = 0;
+
+        memset(&ro, 0, sizeof ro);
+        ro.annotations = ann;
+
+        for(guard = 0, fed = 0; guard < 100000; guard++) {
+            asn_dec_rval_t dv;
+            if(fed < len) fed++;
+            ro.flags = (fed >= len) ? VN_RF_EOF : 0u;
+            dv = vn_decode(0, &asn_DEF_Hyphen_Probe, &st, &ro, nbh, fed);
+            if(dv.code == RC_OK) {
+                done = 1;
+                break;
+            }
+            if(dv.code == RC_FAIL || fed >= len) break;
+            if(st) {
+                ASN_STRUCT_FREE(asn_DEF_Hyphen_Probe, st);
+                st = 0;
+            }
+        }
+        VNT_TRUE(done);
+        if(st) ASN_STRUCT_FREE(asn_DEF_Hyphen_Probe, st);
+    }
+#undef NBH
 
     return vnt_report("t_annogen");
 }

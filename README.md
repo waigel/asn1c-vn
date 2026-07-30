@@ -226,6 +226,11 @@ One case where output departs from the standard:
   `VN_F_STRICT_ANY` makes it an error instead. **Table-constrained open types are
   unaffected** — they resolve to a real descriptor and render normally.
 
+On input the reader is the more forgiving side, as §11.8 asks: a NON-BREAKING
+HYPHEN (U+2011) in any identifier — a member name, an alternative, an enumerator,
+a named number, a named bit — is the same name as one written with an ordinary
+hyphen. Output always uses the ordinary hyphen.
+
 Cases that fail loudly rather than deviate:
 
 - **REAL** is not supported.

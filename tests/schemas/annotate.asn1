@@ -29,6 +29,15 @@ Slot ::= SEQUENCE {
     tail  OCTET STRING
 }
 
+-- 11.8 says a name is the same whether its hyphen is a HYPHEN-MINUS or a
+-- NON-BREAKING HYPHEN, so every kind of identifier the reader matches needs a
+-- hyphen in it: a member name, a named number, a named bit and an enumerator.
+Hyphen-Probe ::= SEQUENCE {
+    first-field  INTEGER { one-value(1) },
+    second-field ENUMERATED { plain-red(0), plain-blue(1) },
+    third-field  BIT STRING { low-bit(0), high-bit(1) }
+}
+
 -- A hyphen in the *type* name: the runtime descriptor says "Pe-Level" while
 -- the generated header says Pe_Level, so the table key needs the same mapping
 -- as the value names.

@@ -44,6 +44,8 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -170,11 +172,41 @@ scan_file(const char *path) {
                 const char *q = p + prefix + 1;
                 size_t      n = take_ident(q, member, sizeof member);
                 q = skip_ws((char *)q + n);
-                if(*q == '=' && cur->count < MAX_VALUES) {
-                    named_value_t *nv = &cur->values[cur->count];
-                    snprintf(nv->name, sizeof nv->name, "%s", member);
-                    nv->value = strtol(q + 1, 0, 0);
-                    cur->count++;
+                if(*q == '=') {
+                    /*
+                     * Anything that cannot be stored faithfully is dropped, and
+                     * said out loud. vn_named_value_t holds a long, and strtol
+                     * would clamp a wider value to LONG_MAX and emit that as
+                     * though the schema had said so -- making `brim` a name for
+                     * the wrong number. Dropping the identifier only costs the
+                     * numeric form, which is equally valid X.680; emitting a
+                     * wrong one is a correctness fault.
+                     */
+                    char     *end = 0;
+                    long long v;
+                    errno = 0;
+                    v = strtoll(q + 1, &end, 0);
+                    if(cur->count >= MAX_VALUES) {
+                        fprintf(stderr,
+                                "vn-annotate: %s has more than %d identifiers; "
+                                "%s and any after it are dropped\n",
+                                cur->type_name, MAX_VALUES, member);
+                    } else if(end == q + 1) {
+                        fprintf(stderr,
+                                "vn-annotate: %s_%s has no readable value; "
+                                "the identifier is dropped\n",
+                                cur->type_name, member);
+                    } else if(errno == ERANGE || v > LONG_MAX || v < LONG_MIN) {
+                        fprintf(stderr,
+                                "vn-annotate: %s_%s does not fit a long; "
+                                "the identifier is dropped\n",
+                                cur->type_name, member);
+                    } else {
+                        named_value_t *nv = &cur->values[cur->count];
+                        snprintf(nv->name, sizeof nv->name, "%s", member);
+                        nv->value = (long)v;
+                        cur->count++;
+                    }
                 }
             }
             continue;

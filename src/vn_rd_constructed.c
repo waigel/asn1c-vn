@@ -110,16 +110,14 @@ vn_rd_components(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr,
          */
         for(i = ordered ? next : 0; i < td->elements_count; i++) {
             const char *nm = td->elements[i].name;
-            if(nm && strlen(nm) == tok.body_len
-               && memcmp(nm, tok.body, tok.body_len) == 0)
+            if(nm && vn_ident_eq(tok.body, tok.body_len, nm, strlen(nm)))
                 break;
         }
         if(i >= td->elements_count) {
             unsigned j;
             for(j = 0; ordered && j < next; j++) {
                 const char *nm = td->elements[j].name;
-                if(nm && strlen(nm) == tok.body_len
-                   && memcmp(nm, tok.body, tok.body_len) == 0)
+                if(nm && vn_ident_eq(tok.body, tok.body_len, nm, strlen(nm)))
                     return vn_rd_fail(r, item,
                                       "member '%.*s' appears out of order or "
                                       "twice in %s",
@@ -296,8 +294,7 @@ vn_rd_choice(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
 
     for(i = 0; i < td->elements_count; i++) {
         const char *nm = td->elements[i].name;
-        if(nm && strlen(nm) == tok.body_len
-           && memcmp(nm, tok.body, tok.body_len) == 0)
+        if(nm && vn_ident_eq(tok.body, tok.body_len, nm, strlen(nm)))
             break;
     }
     if(i >= td->elements_count)

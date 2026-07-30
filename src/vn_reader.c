@@ -326,8 +326,10 @@ vn_rd_integer(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
         size_t i;
         if(names && !names->is_bit_string) {
             for(i = 0; i < names->count; i++) {
-                if(tok.body_len != strlen(names->values[i].name)) continue;
-                if(memcmp(tok.body, names->values[i].name, tok.body_len)) continue;
+                if(!vn_ident_eq(tok.body, tok.body_len,
+                                names->values[i].name,
+                                strlen(names->values[i].name)))
+                    continue;
                 st = (INTEGER_t *)vn_rd_alloc(r, sptr, sizeof(*st));
                 if(!st) return VR_FAIL;
                 if(asn_long2INTEGER(st, names->values[i].value))
@@ -424,8 +426,9 @@ vn_rd_enum_value(vn_reader_t *r, const asn_TYPE_descriptor_t *td, long *out) {
         for(i = 0; i < specs->map_count; i++) {
             const asn_INTEGER_enum_map_t *e = &specs->value2enum[i];
             if(!e->enum_name) continue;
-            if(strlen(e->enum_name) != tok.body_len) continue;
-            if(memcmp(e->enum_name, tok.body, tok.body_len)) continue;
+            if(!vn_ident_eq(tok.body, tok.body_len, e->enum_name,
+                            strlen(e->enum_name)))
+                continue;
             *out = e->nat_value;
             return VR_OK;
         }
@@ -580,8 +583,10 @@ vn_rd_bit_string(vn_reader_t *r, const asn_TYPE_descriptor_t *td, void **sptr) {
             after_comma = 0;
             for(i = 0; i < names->count; i++) {
                 size_t pos_bit;
-                if(strlen(names->values[i].name) != tok.body_len) continue;
-                if(memcmp(names->values[i].name, tok.body, tok.body_len)) continue;
+                if(!vn_ident_eq(tok.body, tok.body_len,
+                                names->values[i].name,
+                                strlen(names->values[i].name)))
+                    continue;
                 pos_bit = (size_t)names->values[i].value;
                 if(pos_bit / 8 >= sizeof tmp)
                     return vn_rd_fail(r, item, "bit position %lu is too large",
