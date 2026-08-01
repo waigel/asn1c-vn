@@ -86,7 +86,7 @@ vn_write_der(const void *data, size_t size, void *key) {
 static void
 usage(const char *argv0) {
     fprintf(stderr,
-            "usage: %s [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der\n"
+            "usage: %s [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] [-C] < input.der\n"
             "\n"
             "  -c        canonical output: deterministic, for diffing\n"
             "  -a        annotated output: adds X.680 comments\n"
@@ -96,6 +96,12 @@ usage(const char *argv0) {
             "  -i WIDTH  indent width, default 4\n"
             "  -L        lenient: emit questionable values instead of failing\n"
             "  -S        strict: fail on a bare ANY rather than emitting hex\n"
+            "  -C        check the schema's subtype constraints (SIZE, ranges)\n"
+            "            and stop at the first value that violates one. Applies\n"
+            "            to -r as well, where it is the more useful direction:\n"
+            "            it refuses to write DER a hand edit has invalidated.\n"
+            "            Constraints are not all of validity -- rules such as\n"
+            "            \"one header, and it comes first\" live in prose.\n"
             "\n"
             "  -r        reverse: read value notation on stdin, write DER on\n"
             "            stdout. Accepts bare values and `valueN <Type> ::= ...`\n"
@@ -112,7 +118,7 @@ main(int argc, char **argv) {
     size_t cap = 1 << 16, len = 0, n, offset, count = 0;
     void *st = 0;
     asn_dec_rval_t rv;
-    int i, assignments = 0, reverse = 0;
+    int i, assignments = 0, reverse = 0, check = 0;
 
     memset(&opts, 0, sizeof opts);
     opts.mode = VN_MODE_PRETTY;
@@ -133,6 +139,8 @@ main(int argc, char **argv) {
             assignments = 1;
         } else if(!strcmp(argv[i], "-r")) {
             reverse = 1;
+        } else if(!strcmp(argv[i], "-C")) {
+            check = 1;
         } else if(!strcmp(argv[i], "-l") && i + 1 < argc) {
             opts.line_width = atoi(argv[++i]);
             if(opts.line_width == 0) opts.line_width = -1; /* 0 means default */
@@ -206,6 +214,17 @@ main(int argc, char **argv) {
                 free(buf);
                 return 1;
             }
+            if(check) {
+                char   why[256];
+                size_t whylen = sizeof why;
+                if(vn_check_constraints(&VN_PDU_DEF, st, why, &whylen) != 0) {
+                    fprintf(stderr, "%s: value %lu violates the schema: %s\n",
+                            argv[0], (unsigned long)count_r + 1, why);
+                    ASN_STRUCT_FREE(VN_PDU_DEF, st);
+                    free(buf);
+                    return 1;
+                }
+            }
             ev = der_encode(&VN_PDU_DEF, st, vn_write_der, stdout);
             ASN_STRUCT_FREE(VN_PDU_DEF, st);
             if(ev.encoded < 0) {
@@ -260,6 +279,18 @@ main(int argc, char **argv) {
             if(st) ASN_STRUCT_FREE(VN_PDU_DEF, st);
             free(buf);
             return 1;
+        }
+
+        if(check) {
+            char   why[256];
+            size_t whylen = sizeof why;
+            if(vn_check_constraints(&VN_PDU_DEF, st, why, &whylen) != 0) {
+                fprintf(stderr, "%s: value %lu violates the schema: %s\n",
+                        argv[0], (unsigned long)count + 1, why);
+                ASN_STRUCT_FREE(VN_PDU_DEF, st);
+                free(buf);
+                return 1;
+            }
         }
 
         if(count && fputc('\n', stdout) == EOF) {

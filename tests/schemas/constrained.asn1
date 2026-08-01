@@ -1,0 +1,31 @@
+-- constrained.asn1: subtype constraints, for the checker.
+--
+-- Every constrained member deliberately sits behind an unconstrained one.
+-- That is the shape asn1c's own SEQUENCE_constraint stops short of: its loop
+-- returns at the first member carrying no constraint of its own, so a checker
+-- that merely delegates to it would report these values clean. The GSMA SAIP
+-- header has exactly this shape, with major-version ahead of iccid.
+Constrained DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+Record ::= SEQUENCE {
+    tag   INTEGER,
+    code  OCTET STRING (SIZE (4)),
+    label UTF8String (SIZE (1..8)) OPTIONAL
+}
+
+-- Reached through a list, so the walk has to descend into elements.
+Records ::= SEQUENCE OF Record
+
+-- Reached through an alternative.
+Pick ::= CHOICE {
+    plain INTEGER,
+    rec   Record
+}
+
+-- Nothing constrained anywhere: the checker must stay silent on it.
+Loose ::= SEQUENCE {
+    a INTEGER,
+    b OCTET STRING
+}
+
+END

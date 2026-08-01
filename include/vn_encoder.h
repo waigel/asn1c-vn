@@ -128,6 +128,27 @@ asn_dec_rval_t vn_decode(const asn_codec_ctx_t *opt_codec_ctx,
                          const vn_read_options_t *opts, const void *buf,
                          size_t size);
 
+/*
+ * Check a value against the subtype constraints of its schema -- SIZE, value
+ * ranges, permitted alphabets. Returns 0 when the value satisfies them, -1 when
+ * it does not, writing the reason into errbuf and the used length into *errlen.
+ * Both may be NULL.
+ *
+ * Shaped like asn1c's asn_check_constraints(), and it calls asn1c's generated
+ * checkers -- but it walks the type tree itself rather than delegating to
+ * SEQUENCE_constraint, which returns at the first member carrying no constraint
+ * of its own and so never reaches the rest. With the GSMA SAIP header, whose
+ * first member is an unconstrained major-version, that means the ICCID's
+ * SIZE (10) is never tested. contrib/asn1c-B-constraint-loop.patch fixes asn1c;
+ * this function does not need the patch.
+ *
+ * Constraints are not all of validity. Whether a value is a usable *profile* --
+ * one header, first, a NAA present -- is stated in prose that no schema can
+ * carry, and nothing here checks it.
+ */
+int vn_check_constraints(const asn_TYPE_descriptor_t *td, const void *sptr,
+                         char *errbuf, size_t *errlen);
+
 #ifdef __cplusplus
 }
 #endif

@@ -64,8 +64,8 @@ the directory that actually holds the `.c` files, not the project root.
 ## Command line
 
 ```
-asn1vn [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] < input.der
-asn1vn -r < input.vn > output.der
+asn1vn [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] [-C] < input.der
+asn1vn -r [-C] < input.vn > output.der
 
   -c        canonical output: deterministic, for diffing
   -a        annotated output: adds X.680 comments
@@ -75,6 +75,7 @@ asn1vn -r < input.vn > output.der
   -i WIDTH  indent width, default 4
   -L        lenient: emit questionable values instead of failing
   -S        strict: fail on a bare ANY rather than emitting hex
+  -C        check the schema's subtype constraints; see "Known limits"
   -r        reverse: value notation in, DER out
 ```
 
@@ -263,22 +264,27 @@ These are properties of asn1c's runtime ABI rather than choices:
   So does X.680 §22.7: trailing zero bits are insignificant only when the type has
   a named bit list, and the table is the only place that fact survives.
 
-- **Subtype constraints are not checked.** A `SIZE`, a value range or a permitted
-  alphabet is enforced by neither direction: the reader takes a ten-octet `iccid`
-  written as four, and the writer emits whatever the structure holds. What *is*
-  enforced is the shape the schema gives a value — a mandatory member may not be
-  missing, a member may not repeat, an unknown one is an error.
+- **Subtype constraints are checked only when asked.** Neither direction enforces
+  a `SIZE`, a range or a permitted alphabet on its own: the reader takes a
+  ten-octet `iccid` written as four. Pass `-C`, or call `vn_check_constraints()`,
+  and it is caught and located. What is enforced unconditionally is the shape the
+  schema gives a value — a mandatory member may not be missing, a member may not
+  repeat, an unknown one is an error.
 
-  asn1c compiles the constraints and `asn_check_constraints()` runs them, so
-  calling it is the natural way to add this. Note that it under-reports until
-  asn1c is patched: `SEQUENCE_constraint` stops at the first member that has no
-  constraint of its own, which for the SAIP header is `major-version` — so
-  `iccid`'s `SIZE (10)` is never reached. `contrib/asn1c-B-constraint-loop.patch`
-  fixes that.
+  ```
+  $ asn1vn -r -C < edited.vn > profile.der
+  asn1vn: value 1 violates the schema: header.iccid (OCTET STRING): constraint failed
+  ```
 
-  Constraints are also only part of what makes a profile valid. Rules such as
-  "exactly one header, and it comes first" are prose in the profile specification,
-  outside anything ASN.1 can state.
+  The walk is ours rather than `asn_check_constraints()`, which under-reports:
+  `SEQUENCE_constraint` returns at the first member carrying no constraint of its
+  own, and for the SAIP header that is `major-version`, four members ahead of
+  `iccid`. `contrib/asn1c-B-constraint-loop.patch` fixes asn1c;
+  `vn_check_constraints()` does not need it.
+
+  Constraints are only part of what makes a profile valid. Rules such as "exactly
+  one header, and it comes first" are prose in the profile specification, outside
+  anything ASN.1 can state, and nothing here checks them.
 
 - **An unset DEFAULT member cannot be told from an absent OPTIONAL one** where
   asn1c dropped the value, so it is omitted.
@@ -288,7 +294,7 @@ These are properties of asn1c's runtime ABI rather than choices:
 ## Testing
 
 ```sh
-make check          # 19 test binaries
+make check          # 20 test binaries
 ```
 
 Layered, in increasing strength:

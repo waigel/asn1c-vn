@@ -17,7 +17,7 @@ SKELDIR ?= $(shell d=$$(command -v $(ASN1C) 2>/dev/null) && \
 
 VN_SRCS := src/vn_writer.c src/vn_encoder.c src/vn_optabs.c \
            src/vn_token.c src/vn_reader.c src/vn_rd_constructed.c \
-           src/vn_primitive.c src/vn_constructed.c
+           src/vn_primitive.c src/vn_constructed.c src/vn_check.c
 VN_OBJS := $(VN_SRCS:.c=.o)
 VN_INC  := -Iinclude -Isrc
 
@@ -108,8 +108,8 @@ vn-annotate: tools/vn-annotate.c
 
 # ---- tests ----------------------------------------------------------------
 
-SCHEMAS := prim constructed strings opentype kitchen annotate annexg
-TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate t_roundtrip t_read_negative
+SCHEMAS := prim constructed strings opentype kitchen annotate annexg constrained
+TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate t_roundtrip t_read_negative t_check
 
 t_link_SCHEMA   := prim
 t_writer_SCHEMA := prim
@@ -128,6 +128,7 @@ t_norm_SCHEMA     := prim
 t_annotate_SCHEMA := prim
 t_roundtrip_SCHEMA := constructed
 t_read_negative_SCHEMA := constructed
+t_check_SCHEMA    := constrained
 
 # asn1c writes into the current directory, so generate inside the target.
 tests/gen/%/.stamp: tests/schemas/%.asn1
