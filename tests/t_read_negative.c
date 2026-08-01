@@ -174,5 +174,39 @@ main(void) {
             "  col red -- trailing comment\n}",
             0, "comments and newlines are skipped");
 
+    /*
+     * 12.6.2 gives the comment two forms, and 12.6.4 is the one the reader was
+     * missing: a multi-line comment opened with slash-star. It has been in
+     * X.680 since the 2002 edition, and TCA's own reference ProfileElements use
+     * it, so a reader without it rejects real files.
+     */
+    accepts(&asn_DEF_Nested,
+            "{ /* a block comment */ name '00'H,\n"
+            "  inner { id 1, tag '00'H },\n"
+            "  /* spanning\n     several lines */ col red\n}",
+            0, "a multi-line comment is skipped");
+
+    /* 12.6.4: an opener found before the closer nests, and the comment ends
+     * only once every one of them has been matched. */
+    accepts(&asn_DEF_Nested,
+            "{ /* outer /* inner */ still the comment */ name '00'H,\n"
+            "  inner { id 1, tag '00'H }, col red }",
+            0, "multi-line comments nest");
+
+    /* 12.6.3: inside a one-line comment the block delimiters mean nothing. */
+    accepts(&asn_DEF_Nested,
+            "{ -- a /* b */ c\n name '00'H, inner { id 1, tag '00'H },"
+            " col red }",
+            0, "block delimiters inside a one-line comment are ordinary text");
+
+    /* 12.6.4: and the other way round, a double hyphen inside a block one. */
+    accepts(&asn_DEF_Nested,
+            "{ /* a -- b */ name '00'H, inner { id 1, tag '00'H }, col red }",
+            0, "a double hyphen inside a multi-line comment is ordinary text");
+
+    rejects(&asn_DEF_Nested,
+            "{ /* never closed name '00'H, inner { id 1, tag '00'H } }", 0,
+            "an unterminated multi-line comment");
+
     return vnt_report("t_read_negative");
 }

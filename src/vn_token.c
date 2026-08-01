@@ -72,9 +72,11 @@ vt_digit(char c) {
 /*
  * Skip whitespace and X.680 comments.
  *
- * A comment runs to the next "--" or to end of line (11.6). One that reaches the
- * end of the buffer with neither may continue in the next chunk, so it counts as
- * incomplete rather than as terminated.
+ * 12.6.2 gives the comment two forms. A one-line comment runs to the next "--"
+ * or to end of line (12.6.3); a multi-line one is bracketed and nests, and the
+ * delimiters of each form are ordinary text inside the other (12.6.4). One that
+ * reaches the end of the buffer unterminated may continue in the next chunk, so
+ * it counts as incomplete rather than as ended.
  */
 static int
 vt_skip_filler(const char *buf, size_t size, int eof, size_t *pos) {
@@ -86,6 +88,42 @@ vt_skip_filler(const char *buf, size_t size, int eof, size_t *pos) {
             *pos = p;
             return 1;
         }
+
+        if(buf[p] == '/') {
+            size_t q;
+            int    depth;
+            if(p + 1 >= size) {
+                /* Either the opener of a comment or simply not a token; the
+                 * next chunk decides. */
+                *pos = p;
+                return eof ? 1 : 0;
+            }
+            if(buf[p + 1] != '*') {
+                *pos = p;
+                return 1; /* not a comment; the caller will make sense of it */
+            }
+            for(q = p + 2, depth = 1; q < size && depth > 0;) {
+                if(q + 1 < size && buf[q] == '/' && buf[q + 1] == '*') {
+                    depth++;
+                    q += 2;
+                } else if(q + 1 < size && buf[q] == '*' && buf[q + 1] == '/') {
+                    depth--;
+                    q += 2;
+                } else {
+                    q++;
+                }
+            }
+            if(depth > 0 && !eof) {
+                *pos = p; /* may continue in the next chunk */
+                return 0;
+            }
+            /* Unterminated at end of input: consume what there is. The value is
+             * then missing and the parse fails for that, which is the honest
+             * complaint. */
+            p = q;
+            continue;
+        }
+
         if(!(buf[p] == '-' && p + 1 < size && buf[p + 1] == '-')) {
             /* A lone '-' at the very end could begin a comment or a negative
              * number; either way we need more input to tell. */

@@ -275,11 +275,34 @@ clean:
 	rm -rf tests/bin tests/gen build libvn.a asn1vn asn1vn-named \
 	    vn-annotate fuzz-read crash-* leak-* timeout-* $(VN_OBJS)
 
-.PHONY: check clean check-skeldir check-reference check-xer check-roundtrip fuzz-read
+.PHONY: check clean check-skeldir check-reference check-xer check-roundtrip check-vn-corpus fuzz-read
 
 # Round trip over real encodings: DER -> value notation -> DER, byte-compared.
 # The acceptance criterion for the codec, and it needs no external reference.
 #   make check-roundtrip GEN_DIR=<gen> PDU=<Type> DERDIR=<dir with *.der>
+# Value notation written by a foreign producer -- the only corpus that can show
+# the reader agrees with the standard rather than merely with our writer. TCA
+# ships its reference ProfileElements this way; the files are theirs, so they are
+# not vendored here, they are pointed at.
+#   make check-vn-corpus GEN_DIR=<gen> PDU=<Type> VNDIR=<dir with *.asn1>
+check-vn-corpus: check-skeldir
+	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
+	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
+	@test -n "$(VNDIR)"   || { echo "set VNDIR=<dir with value notation>" >&2; exit 1; }
+	rm -rf build/gen
+	@mkdir -p build/gen tests/bin
+	cd build/gen && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
+	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
+	$(MAKE) --no-print-directory vn-annotate
+	./vn-annotate $(GEN_DIR) > build/vn_annotations.c
+	$(CC) $(ALL_CFLAGS) -Itests -idirafter $(GEN_DIR) -DVC_PDU=$(PDU) -DVC_EXTERNAL \
+	    tests/t_vncorpus.c $(TEST_SUPPORT) $(VN_SRCS) build/vn_annotations.c \
+	    build/gen/*.o -o tests/bin/t_vncorpus -lm
+	@find "$(VNDIR)" -name '*.asn1' -o -name '*.vn' | sort > build/vn_corpus.list
+	@test -s build/vn_corpus.list || { \
+	    echo "no *.asn1 or *.vn files under VNDIR=$(VNDIR)" >&2; exit 1; }
+	@tr '\n' '\0' < build/vn_corpus.list | xargs -0 ./tests/bin/t_vncorpus
+
 check-roundtrip: check-skeldir
 	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
 	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }

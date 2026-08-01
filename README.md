@@ -309,19 +309,31 @@ Layered, in increasing strength:
    sequences must agree. asn1c's XER encoder shares no code with this one.
 4. **Round trip**, the acceptance criterion: DER → value notation → DER,
    byte-compared.
-5. **The standard's own examples.** X.680 Annex G is transcribed into
+5. **Value notation somebody else wrote.** Every other layer feeds the reader
+   text this codec produced, so agreement shows only that the two halves share
+   their assumptions. `check-vn-corpus` reads a directory of foreign value
+   notation and requires two things of each file: that it parses, and that the
+   DER from their text and the DER from our re-rendering of it are identical.
+   TCA publishes its reference ProfileElements in this form; 395 of the 404 in
+   the 3.4 set pass. Of the nine that do not, two use members absent from the
+   3.4.1 schema and seven are malformed — a missing comma between components
+   (§25.18, §26.3) or a missing colon before a CHOICE alternative. The corpus is
+   not vendored here: it belongs to its publisher, so the target is pointed at
+   it.
+6. **The standard's own examples.** X.680 Annex G is transcribed into
    `tests/schemas/annexg.asn1` and `tests/t_annexg.c`, each case labelled with the
    subclause it came from. Where the annex asserts that two spellings denote one
    value — `{sunday, monday, wednesday}` and `'1101000'B` under §22.7 — or that
    two denote different ones — `'1101'B` and `'1101000'B` without a named bit
    list, per the note to G.2.5.1 — the test asserts the same. Nothing here is our
    reading of the standard; it is the standard's own worked material.
-6. **Fuzzing** the reader, the only part that takes input it did not produce.
+7. **Fuzzing** the reader, the only part that takes input it did not produce.
 
 Against real data:
 
 ```sh
-make check-roundtrip GEN_DIR=<gen> PDU=<Type> DERDIR=<dir with *.der>
+make check-roundtrip  GEN_DIR=<gen> PDU=<Type> DERDIR=<dir with *.der>
+make check-vn-corpus  GEN_DIR=<gen> PDU=<Type> VNDIR=<dir with *.asn1>
 make check-xer       GEN_DIR=<gen> PDU=<Type> [DERDIR=<dir> | ROUNDS=20000]
 make check-reference GEN_DIR=<gen> PDU=<Type> REFDIR=<dir with *.der and *.txt>
 make fuzz-read && ./fuzz-read -max_total_time=60
