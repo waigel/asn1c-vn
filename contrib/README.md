@@ -1,3 +1,22 @@
+# contrib
+
+Three patches, each standing on its own. Every one carries its full reasoning in
+its own commit message, which is the place to read before applying it.
+
+| Patch | Against | What it does |
+| --- | --- | --- |
+| `ept-vn.patch` | a tool built from asn1c's `converter-example.c` | adds `-ovn` output, documented below |
+| `asn1c-A-octet-bit-string-defaults.patch` | asn1c | emits DEFAULT values for OCTET STRING and BIT STRING, which the compiler parsed and then dropped |
+| `asn1c-B-constraint-loop.patch` | asn1c | makes `asn_check_constraints()` check every member of a SEQUENCE or SET rather than stopping at the first |
+
+Patch B matters for anyone validating a profile. Without it a `SIZE (10)` on the
+SAIP header's `iccid` is never tested, because the member before it carries no
+constraint of its own and the loop returns there — so a four-octet ICCID passes
+validation in silence. Neither patch is needed to *use* asn1c-vn; this codec calls
+neither the DEFAULT setters it adds nor `asn_check_constraints` at all.
+
+Apply with `git am` in an asn1c checkout, then reinstall the skeletons.
+
 # Integrating asn1c-vn into an asn1c converter tool
 
 `ept` in [euicc-profile-tool](https://github.com/waigel/euicc-profile-tool) is

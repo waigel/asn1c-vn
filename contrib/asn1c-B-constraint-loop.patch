@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johannes Waigel <johannes@waigel.me>
+Subject: [PATCH] Check every member's constraints, not just the first
+
+SEQUENCE_constraint and SET_constraint walk a type's members and validate
+each in turn, but both leave the loop on the first iteration.
+
+In SEQUENCE_constraint the branch taken when a member has no member-level
+constraint returns the result of the member type's own constraint instead
+of keeping it and continuing:
+
+	if(elm->encoding_constraints.general_constraints) {
+		int ret = elm->...general_constraints(...);
+		if(ret) return ret;              /* correct */
+	} else {
+		return elm->type->...general_constraints(...);   /* ends the loop */
+	}
+
+So validation stops at the first member that carries no constraint of its
+own. SET_constraint has the same shape in both branches, so it never checks
+past member zero.
+
+The effect is silent: asn_check_constraints() reports success for a value
+that violates a constraint the compiler did emit a checker for. With the
+GSMA SAIP profile schema,
+
+    ProfileHeader ::= SEQUENCE {
+        major-version UInt8,                    -- no member constraint
+        minor-version UInt8,
+        profileType   UTF8String (SIZE (1..100)) OPTIONAL,
+        iccid         OCTET STRING (SIZE (10)),  -- memb_iccid_constraint_1
+        ...
+
+major-version is first and has no member-level constraint, so the loop
+returns there and memb_iccid_constraint_1 is never reached: a profile whose
+ICCID is four octets rather than ten passes asn_check_constraints() without
+a word. Verified against four GSMA test profiles (120 ProfileElements):
+unchanged before the fix, and after it the short ICCID is reported while
+the untouched profiles stay clean.
+
+CHOICE_constraint returning after one member is correct -- a CHOICE has
+exactly one alternative present -- and SET_OF_constraint already loops
+properly. Only these two are affected.
+
+The bug dates from a5972bed ("Combined constraints and introduced value
+randomizer"), which rewrote the member-constraint lookup and kept the
+early return that the old single-branch form had.
+---
+--- a/skeletons/constr_SEQUENCE.c
++++ b/skeletons/constr_SEQUENCE.c
+@@ -1062,8 +1062,9 @@
+ 				ctfailcb, app_key);
+ 			if(ret) return ret;
+ 		} else {
+-			return elm->type->encoding_constraints.general_constraints(elm->type,
++			int ret = elm->type->encoding_constraints.general_constraints(elm->type,
+ 				memb_ptr, ctfailcb, app_key);
++			if(ret) return ret;
+ 		}
+ 	}
+ 
+--- a/skeletons/constr_SET.c
++++ b/skeletons/constr_SET.c
+@@ -1015,11 +1015,13 @@
+ 		}
+ 
+ 		if(elm->encoding_constraints.general_constraints) {
+-			return elm->encoding_constraints.general_constraints(
++			int ret = elm->encoding_constraints.general_constraints(
+ 					elm->type, memb_ptr, ctfailcb, app_key);
+-		} else {
+-			return elm->type->encoding_constraints.general_constraints(
++			if(ret) return ret;
++		} else {
++			int ret = elm->type->encoding_constraints.general_constraints(
+ 					elm->type, memb_ptr, ctfailcb, app_key);
++			if(ret) return ret;
+ 		}
+ 	}
+ 
+-- 
+2.39.5

@@ -263,6 +263,23 @@ These are properties of asn1c's runtime ABI rather than choices:
   So does X.680 §22.7: trailing zero bits are insignificant only when the type has
   a named bit list, and the table is the only place that fact survives.
 
+- **Subtype constraints are not checked.** A `SIZE`, a value range or a permitted
+  alphabet is enforced by neither direction: the reader takes a ten-octet `iccid`
+  written as four, and the writer emits whatever the structure holds. What *is*
+  enforced is the shape the schema gives a value — a mandatory member may not be
+  missing, a member may not repeat, an unknown one is an error.
+
+  asn1c compiles the constraints and `asn_check_constraints()` runs them, so
+  calling it is the natural way to add this. Note that it under-reports until
+  asn1c is patched: `SEQUENCE_constraint` stops at the first member that has no
+  constraint of its own, which for the SAIP header is `major-version` — so
+  `iccid`'s `SIZE (10)` is never reached. `contrib/asn1c-B-constraint-loop.patch`
+  fixes that.
+
+  Constraints are also only part of what makes a profile valid. Rules such as
+  "exactly one header, and it comes first" are prose in the profile specification,
+  outside anything ASN.1 can state.
+
 - **An unset DEFAULT member cannot be told from an absent OPTIONAL one** where
   asn1c dropped the value, so it is omitted.
 
