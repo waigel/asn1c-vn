@@ -12,62 +12,6 @@
 #include <asn_application.h>
 #include "vn_encoder.h"
 
-/*
- * Value assignments are module syntax, not value syntax, so the codec knows
- * nothing about them: skipping `valueN <Type> ::= ` is the tool's job. Returns
- * the offset just past the header, or `pos` when there is none.
- *
- * X.680 comments and whitespace may appear anywhere, so both are skipped here
- * too -- the same rules the tokeniser applies inside a value.
- */
-static size_t
-skip_filler(const char *buf, size_t len, size_t pos) {
-    for(;;) {
-        while(pos < len && (buf[pos] == ' ' || buf[pos] == '\t'
-                            || buf[pos] == '\n' || buf[pos] == '\r'))
-            pos++;
-        if(pos + 1 < len && buf[pos] == '-' && buf[pos + 1] == '-') {
-            pos += 2;
-            while(pos < len) {
-                if(buf[pos] == '\n') { pos++; break; }
-                if(pos + 1 < len && buf[pos] == '-' && buf[pos + 1] == '-') {
-                    pos += 2;
-                    break;
-                }
-                pos++;
-            }
-            continue;
-        }
-        return pos;
-    }
-}
-
-static size_t
-take_ident(const char *buf, size_t len, size_t pos) {
-    size_t start = pos;
-    while(pos < len
-          && ((buf[pos] >= 'a' && buf[pos] <= 'z')
-              || (buf[pos] >= 'A' && buf[pos] <= 'Z')
-              || (buf[pos] >= '0' && buf[pos] <= '9') || buf[pos] == '-'
-              || buf[pos] == '_'))
-        pos++;
-    return pos > start ? pos : start;
-}
-
-static size_t
-skip_assignment_header(const char *buf, size_t len, size_t pos) {
-    size_t p = skip_filler(buf, len, pos), q;
-
-    q = take_ident(buf, len, p);
-    if(q == p) return pos; /* no value reference */
-    p = skip_filler(buf, len, q);
-    q = take_ident(buf, len, p);
-    if(q == p) return pos; /* no type reference */
-    p = skip_filler(buf, len, q);
-    if(p + 2 < len && buf[p] == ':' && buf[p + 1] == ':' && buf[p + 2] == '=')
-        return p + 3;
-    return pos;
-}
 
 #define VN_CAT_(a, b) a##b
 #define VN_CAT(a, b) VN_CAT_(a, b)
@@ -200,7 +144,7 @@ main(int argc, char **argv) {
 
             off = skip_filler((const char *)buf, len, off);
             if(off >= len) break;
-            off = skip_assignment_header((const char *)buf, len, off);
+            off = vn_skip_assignment((const char *)buf, len, off);
             off = skip_filler((const char *)buf, len, off);
             if(off >= len) break;
 

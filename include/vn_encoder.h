@@ -146,6 +146,13 @@ asn_dec_rval_t vn_decode(const asn_codec_ctx_t *opt_codec_ctx,
  * one header, first, a NAA present -- is stated in prose that no schema can
  * carry, and nothing here checks it.
  */
+/*
+ * The offset just past a `valueN <Type> ::= ` header, or pos where there is
+ * none. A file of values carries one before each value, and a reader of such a
+ * file has to step over it. Comments and whitespace are skipped as well.
+ */
+size_t vn_skip_assignment(const char *buf, size_t len, size_t pos);
+
 int vn_check_constraints(const asn_TYPE_descriptor_t *td, const void *sptr,
                          char *errbuf, size_t *errlen);
 
