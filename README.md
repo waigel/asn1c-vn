@@ -2,18 +2,17 @@
 
 [![ci](https://github.com/waigel/asn1c-vn/actions/workflows/ci.yml/badge.svg)](https://github.com/waigel/asn1c-vn/actions/workflows/ci.yml)
 
-An **ASN.1 value notation codec** for [vlm/asn1c](https://github.com/vlm/asn1c) —
+An **ASN.1 value notation codec** for [vlm/asn1c](https://github.com/vlm/asn1c),
 in both directions.
 
-Value notation is the human-readable syntax for ASN.1 *values*, defined by
-**ITU-T X.680 (02/2021) = ISO/IEC 8824-1:2021**. It is the one transfer syntax
-asn1c does not ship: asn1c handles BER, DER, XER, OER and PER, but not this. So a
-DER file can be turned into XML, but not into something a person reads
-comfortably, and text a person wrote cannot be turned back into DER.
+Value notation is the syntax for ASN.1 *values* that a person can read. ITU-T
+X.680 (02/2021), which is ISO/IEC 8824-1:2021, defines it. It is the one transfer
+syntax that asn1c does not ship. asn1c handles BER, DER, XER, OER and PER. None
+of those turns a DER file into text that reads well. None of them turns text
+that a person wrote back into DER.
 
-This closes that gap without forking asn1c. It is an addon depending only on
-asn1c's runtime ABI, so it works with any asn1c output without regenerating
-anything.
+asn1c-vn closes that gap and does not fork asn1c. It depends on the runtime ABI
+of asn1c alone, so it works with any asn1c output and regenerates nothing.
 
 ```
 $ asn1vn < profile_element.der
@@ -35,31 +34,32 @@ $ asn1vn < profile_element.der
 $ asn1vn -r < profile_element.vn > roundtripped.der
 ```
 
-The correctness claim is checkable without any reference file: **DER → value
-notation → DER is byte-identical** for all 112 `ProfileElement` values in the four
-GSMA eSIM test profiles.
+You can check the correctness claim without a reference file. **DER to value
+notation and back to DER gives the same bytes.** This holds for every one of the
+112 `ProfileElement` values in the four GSMA eSIM test profiles.
 
-The X.68x series is freely available from the ITU, unlike most of its
+The ITU publishes the X.68x series without charge, unlike most of its
 recommendations: <https://www.itu.int/rec/T-REC-X.680>.
 
-## Building
+## Build
 
-Needs GNU make, a C99 compiler with weak symbol support (GCC or clang), and
-`asn1c` on `PATH`. On macOS `-D_DARWIN_C_SOURCE` is added automatically, because
-asn1c's `GeneralizedTime.c` needs `struct tm` and `timegm`.
+You need GNU make and a C99 compiler with weak symbol support. GCC and clang
+both work. You also need `asn1c` on `PATH`. On macOS the build adds
+`-D_DARWIN_C_SOURCE`, because `GeneralizedTime.c` in asn1c needs `struct tm` and
+`timegm`.
 
 ```sh
 make check                             # the test suite
 make libvn.a                           # the library
-make asn1vn GEN_DIR=<dir> PDU=<Type>   # the example CLI
+make asn1vn GEN_DIR=<dir> PDU=<Type>   # the example command
 ```
 
-- `GEN_DIR` — a directory of asn1c output (`*.c` and `*.h`)
-- `PDU` — the root type's name, so `asn_DEF_<PDU>` is used
+- `GEN_DIR` is a directory of asn1c output, with the `*.c` and `*.h` files.
+- `PDU` is the name of the root type, so that `asn_DEF_<PDU>` is used.
 
-If asn1c lives somewhere unusual, set `SKELDIR` to the directory holding
-`constr_TYPE.h`. Some projects generate into a subdirectory; point `GEN_DIR` at
-the directory that actually holds the `.c` files, not the project root.
+If asn1c is in an unusual place, set `SKELDIR` to the directory that holds
+`constr_TYPE.h`. Some projects generate into a subdirectory. Point `GEN_DIR` at
+the directory that holds the `.c` files, and not at the root of the project.
 
 ## Command line
 
@@ -67,25 +67,26 @@ the directory that actually holds the `.c` files, not the project root.
 asn1vn [-c|-a] [-A] [-l WIDTH] [-i WIDTH] [-L] [-S] [-C] < input.der
 asn1vn -r [-C] < input.vn > output.der
 
-  -c        canonical output: deterministic, for diffing
+  -c        canonical output: deterministic, for a diff
   -a        annotated output: adds X.680 comments
-  -A        emit `valueN <Type> ::= <value>` assignments, the form reference
-            tooling uses, so its output can be diffed directly
-  -l WIDTH  wrap hex at WIDTH columns; 0 disables wrapping
-  -i WIDTH  indent width, default 4
-  -L        lenient: emit questionable values instead of failing
-  -S        strict: fail on a bare ANY rather than emitting hex
-  -C        check the schema's subtype constraints; see "Known limits"
-  -r        reverse: value notation in, DER out
+  -A        write `valueN <Type> ::= <value>` assignments, the form that
+            reference tools use, so that a diff against them works
+  -l WIDTH  wrap hex at WIDTH columns. 0 turns wrapping off
+  -i WIDTH  indent width, 4 by default
+  -L        lenient: write a questionable value instead of a failure
+  -S        strict: fail on a bare ANY instead of writing hex
+  -C        check the subtype constraints of the schema. See "Known limits"
+  -r        reverse: read value notation, write DER
 ```
 
-Exit status is 0 on success, 1 on a decode or encode failure, 2 on a usage error.
+The exit status is 0 after success, 1 after a read or write failure, and 2 after
+a usage error.
 
-Both directions process **every** value in the input, not just the first. A single
-DER value is the common case, but some formats concatenate them — an SGP.22
-profile package is a sequence of `ProfileElement` TLVs one after another — and
-stopping after one would silently ignore almost the whole file. Input left
-undecoded is always an error, never ignored.
+Both directions process **every** value in the input, and not the first one
+alone. One DER value is the common case. Some formats concatenate values. An
+SGP.22 profile package is a sequence of `ProfileElement` values, one after the
+other. A tool that stops after the first value ignores almost the whole file.
+Input that stays undecoded is an error, never a silence.
 
 ## API
 
@@ -104,13 +105,13 @@ int vn_fprint(FILE *stream, const asn_TYPE_descriptor_t *td, const void *sptr,
               const vn_options_t *opts);
 ```
 
-Naming follows the asn1c family — `xer_encode`, `der_encode`, `oer_encode` — and
-`asn_enc_rval_t` keeps asn1c's encoder contract: `encoded` is the byte count or
-`-1`, with `failed_type` and `structure_ptr` marking the failure site. Passing
-`opts` as `NULL` means pretty defaults.
+The names follow the asn1c family: `xer_encode`, `der_encode`, `oer_encode`.
+`asn_enc_rval_t` keeps the encoder contract of asn1c. The field `encoded` holds
+the byte count or `-1`, and `failed_type` with `structure_ptr` marks the place of
+the failure. If `opts` is `NULL`, the defaults give pretty output.
 
-`vn_options_t` adds an `errbuf`/`errlen` pair that receives the reason in plain
-text, so "fail loudly" also means "fail comprehensibly":
+`vn_options_t` adds an `errbuf` and `errlen` pair. It receives the reason as
+plain text, so that a loud failure is also a clear one:
 
 ```c
 char reason[256];
@@ -122,9 +123,9 @@ if(vn_fprint(stdout, &asn_DEF_MyType, value, &o) < 0)
     fprintf(stderr, "cannot render: %s\n", reason);
 ```
 
-Flags: `VN_F_LENIENT` emits questionable values instead of failing,
-`VN_F_ENUM_WITH_VALUE` adds the numeric enum value in a comment, `VN_F_STRICT_ANY`
-turns a bare `ANY` into an error.
+Three flags change the output. `VN_F_LENIENT` writes a questionable value
+instead of a failure. `VN_F_ENUM_WITH_VALUE` adds the numeric value of an
+enumerator in a comment. `VN_F_STRICT_ANY` turns a bare `ANY` into an error.
 
 ### Reading
 
@@ -135,11 +136,12 @@ asn_dec_rval_t vn_decode(const asn_codec_ctx_t *opt_codec_ctx,
                          const void *buf, size_t size);
 ```
 
-Shaped like asn1c's `xer_type_decoder_f` minus its `opt_mname`, because value
-notation has no element wrapper around a value. Exactly one value is consumed;
-`rval.consumed` says where it ended, and anything after it is the caller's
-business. Value assignments (`valueN <Type> ::= …`) are module syntax rather than
-value syntax, so the codec knows nothing about them — `asn1vn -r` handles those.
+The shape follows `xer_type_decoder_f` of asn1c, without its `opt_mname`: value
+notation puts no element wrapper around a value. The reader consumes exactly one
+value. The field `rval.consumed` says where that value ended, and the rest of
+the buffer belongs to the caller. A value assignment (`valueN <Type> ::= …`) is
+module syntax and not value syntax, so the codec knows nothing about it.
+`asn1vn -r` handles that form.
 
 ```c
 char reason[256];
@@ -155,268 +157,301 @@ if(rv.code != RC_OK)
 ASN_STRUCT_FREE(asn_DEF_MyType, st);               /* correct after a failure too */
 ```
 
-**`VN_RF_EOF` matters.** A bare token at the end of a buffer is ambiguous: `TRUE`
-may be complete, or the start of a longer identifier arriving in the next chunk.
-Callers holding the whole text — the normal case — set this flag; one feeding a
-stream sets it only on the final presentation, or the reader asks for more for
-ever.
+**`VN_RF_EOF` matters.** A bare token at the end of a buffer is ambiguous.
+`TRUE` can be complete, or it can be the start of a longer identifier that
+arrives in the next chunk. A caller that holds the whole text sets this flag,
+and that is the normal case. A caller that feeds a stream sets it on the last
+presentation alone, or the reader asks for more input for ever.
 
-`*struct_ptr` belongs to the caller after `RC_WMORE` and after `RC_FAIL` alike;
-release it with `ASN_STRUCT_FREE`.
+The caller owns `*struct_ptr` after `RC_WMORE` and after `RC_FAIL`. Release it
+with `ASN_STRUCT_FREE`.
 
-Restartability follows asn1c's own contract, which is only partial: a value is
-re-presented from its start rather than resumed mid-token, and a single token must
-be complete within one presentation, so a 10 KB hstring needs a 10 KB buffer.
-asn1c's XER decoder behaves the same way.
+Restart follows the contract of asn1c, and that contract is partial. The reader
+presents a value again from its start and does not resume inside a token. One
+token must be complete within one presentation, so a hstring of 10 KB needs a
+buffer of 10 KB. The XER decoder of asn1c behaves the same way.
 
-### Identifiers asn1c does not keep
+### The identifiers that asn1c does not keep
 
-asn1c retains ENUMERATED identifiers, but not INTEGER named numbers or BIT STRING
-named bit lists — and for INTEGER it *must not*: X.693 §8.3.4 prohibits the
-identifier form in XER, and asn1c's own `INTEGER__dump` would emit `<pukAppl1/>`
-instead of `1`. Patching the compiler there would break conformance.
+asn1c keeps the identifiers of an ENUMERATED. It does not keep the named numbers
+of an INTEGER, and it does not keep the named bit list of a BIT STRING. For the
+INTEGER it *must not*: X.693 §8.3.4 forbids the identifier form in XER, and
+`INTEGER__dump` of asn1c would write `<pukAppl1/>` where the standard demands
+`1`. A patch to the compiler there breaks conformance.
 
-The names do survive as C enums in the generated headers, so `vn-annotate`
-recovers them into a table:
+The names survive as C enums in the generated headers. `vn-annotate` recovers
+them into a table:
 
 ```sh
 make vn-annotate
 ./vn-annotate <gen-dir> > vn_annotations.c   # then link it
 ```
 
-`make asn1vn` does this for you. With the table you get `keyReference pukAppl1` and
-`{ key-cert, crl-sign }`; without it, `keyReference 1` and `'0110'B`, which is
-equally valid X.680. The table is also what lets the reader accept the identifiers
-reference tooling writes.
+`make asn1vn` does this for you. With the table you get `keyReference pukAppl1`
+and `{ key-cert, crl-sign }`. Without it you get `keyReference 1` and `'0110'B`,
+which is equally valid X.680. The table is also what lets the reader accept the
+identifiers that reference tools write.
 
-An inline definition — `algorithmID INTEGER { milenage(1), … }` written in place
-rather than as its own type — has no descriptor of its own to look up by, since
-asn1c points it at the shared `asn_DEF_NativeInteger`. It is keyed instead by the
-path that reaches it, `AlgoParameter__algorithmID`, which is what asn1c names the
-enum. The path accumulates through anonymous types, so a nested one is
-`Outer__inner__x`, or `Outer__ring__Member__y` for a list element.
+An inline definition has no descriptor to look up. `algorithmID INTEGER {
+milenage(1), … }`, written in place instead of as its own type, points at the
+shared `asn_DEF_NativeInteger`. The table keys it by the path that reaches it,
+`AlgoParameter__algorithmID`, which is the name that asn1c gives the enum. The
+path accumulates through anonymous types: a nested one is `Outer__inner__x`, and
+a list element is `Outer__ring__Member__y`.
 
-Which representation asn1c picked does not matter: a plain `long`, the
-`unsigned long` it uses for `(0..MAX)`, and the buffer-backed `INTEGER_t` it
-falls back to for a range it will not hold natively all consult the table. They
-have to, or the reader would accept an identifier the writer never emits.
+The representation that asn1c picked does not matter. Three representations
+exist: a plain `long`, the `unsigned long` for `(0..MAX)`, and the
+buffer-backed `INTEGER_t` for a wide range. All three consult the table. They
+must, or the reader accepts an identifier that the writer never writes.
 
-Set it through `vn_options_t.annotations` / `vn_read_options_t.annotations`, or
-link the generated file and let the weak default pick it up.
+Set the table through `vn_options_t.annotations` or
+`vn_read_options_t.annotations`. You can also link the generated file and let
+the weak default find it.
 
 ## Output modes
 
-All three emit valid X.680, comments included — X.680 comments are lexical items,
-so annotated output stays parseable.
+All three modes write valid X.680, comments included. An X.680 comment is a
+lexical item, so annotated output stays readable by a parser.
 
-- **PRETTY** breaks constructed values across lines, keeps scalars on their
-  field's line, wraps hex at `line_width`.
-- **CANONICAL** is deterministic: fixed two-space indent, no wrapping, no
-  comments. It ignores `indent_width` and `line_width`, so two callers cannot
-  produce differing "canonical" text for the same value.
-- **ANNOTATED** is pretty plus comments naming types, marking absent optional
-  members and flagging bare `ANY`.
+- **PRETTY** breaks a constructed value across lines. It keeps a scalar on the
+  line of its field and wraps hex at `line_width`.
+- **CANONICAL** is deterministic. The indent is two spaces, there is no
+  wrapping, and there are no comments. It ignores `indent_width` and
+  `line_width`, so two callers cannot write different "canonical" text for one
+  value.
+- **ANNOTATED** is pretty output plus comments. The comments name types, mark an
+  absent optional member, and flag a bare `ANY`.
 
-## Deviations from X.680
+## Where the output departs from X.680
 
-One case where output departs from the standard:
+One case departs from the standard:
 
-- **A bare `ANY` is emitted as a hex string.** asn1c compiles `ANY` to an OCTET
-  STRING with subvariant `ASN_OSUBV_ANY` and keeps no type information, so the type
-  inside is unknown and no correct value notation exists for it.
-  `VN_F_STRICT_ANY` makes it an error instead. **Table-constrained open types are
-  unaffected** — they resolve to a real descriptor and render normally.
+- **A bare `ANY` becomes a hex string.** asn1c compiles `ANY` into an OCTET
+  STRING with the subvariant `ASN_OSUBV_ANY` and keeps no type information. The
+  type inside is therefore unknown, and no correct value notation for it exists.
+  `VN_F_STRICT_ANY` makes it an error instead. **A table-constrained open type is
+  not affected.** It resolves to a real descriptor and renders normally.
 
-On input the reader is the more forgiving side, as §11.8 asks: a NON-BREAKING
-HYPHEN (U+2011) in any identifier — a member name, an alternative, an enumerator,
-a named number, a named bit — is the same name as one written with an ordinary
-hyphen. Output always uses the ordinary hyphen.
+On input the reader is the more tolerant side, as §11.8 asks. A NON-BREAKING
+HYPHEN (U+2011) in an identifier is the same name as an ordinary hyphen. This
+holds for a member name, an alternative, an enumerator, a named number and a
+named bit. The output always uses the ordinary hyphen.
 
-Cases that fail loudly rather than deviate:
+Three cases fail loudly instead of departing:
 
 - **REAL** is not supported.
-- **Control characters in strings.** A cstring cannot carry them; X.680 provides a
-  separate character-defs form, not implemented here. `VN_F_LENIENT` emits them
-  raw, which produces text outside the standard.
-- An **unknown ENUMERATED value** under strict enumeration, since X.680 admits only
-  the identifier. `VN_F_LENIENT` emits the number.
+- **A control character in a string.** A cstring cannot carry one, and the
+  separate character-defs form of X.680 is not implemented here. `VN_F_LENIENT`
+  writes the character raw, and that text is outside the standard.
+- **An unknown ENUMERATED value** under strict enumeration. X.680 admits the
+  identifier alone. `VN_F_LENIENT` writes the number.
 
 ## Known limits
 
-These are properties of asn1c's runtime ABI rather than choices:
+These follow from the runtime ABI of asn1c and are not choices:
 
-- **DEFAULT values survive only for natively stored types.** asn1c keeps the
-  default of an INTEGER, BOOLEAN or ENUMERATED member as a setter on the member, so
-  an absent one is reconstructed and printed. For OCTET STRING, BIT STRING and the
-  string types it discards the value: `lcsi [10] OCTET STRING (SIZE (1)) DEFAULT
-  '05'H` compiles to `0, 0, /* No default value */`.
+- **A DEFAULT value survives for a natively stored type alone.** asn1c keeps
+  the default of an INTEGER, a BOOLEAN or an ENUMERATED member as a setter on
+  the member. An absent member is therefore reconstructed and written. For
+  OCTET STRING, BIT STRING and the string types asn1c discards the value:
+  `lcsi [10] OCTET STRING (SIZE (1)) DEFAULT '05'H` compiles to
+  `0, 0, /* No default value */`.
 
-  `contrib/asn1c-A-octet-bit-string-defaults.patch` fixes that in asn1c. It is a
-  bug fix rather than a feature: asn1c parses the value — `asn1c -E` prints it back
-  — and the runtime hook already exists, so only the emission was missing.
-  Everything here works without it.
+  `contrib/asn1c-A-octet-bit-string-defaults.patch` corrects that in asn1c. It
+  is a bug fix and not a feature: asn1c parses the value, `asn1c -E` prints it
+  back, and the runtime hook exists already. The emission alone was missing.
+  Everything here works without the patch.
 
-- **A `SEQUENCE OF` DEFAULT is unavailable even with that patch**, because asn1c
-  retains neither the value nor a comparator. This is the single remaining obstacle
-  to byte-identical interoperability with reference value notation; see below.
+- **A `SEQUENCE OF` DEFAULT stays unavailable even with that patch.** asn1c
+  keeps neither the value nor a comparator for it. This is the one remaining
+  obstacle to byte-identical output against reference value notation. See
+  "Reading the output of another tool".
 
-- **BIT STRING named bits and INTEGER named numbers** need the annotation table.
-  So does X.680 §22.7: trailing zero bits are insignificant only when the type has
-  a named bit list, and the table is the only place that fact survives.
+- **BIT STRING named bits and INTEGER named numbers need the annotation table.**
+  X.680 §22.7 needs it too. A trailing zero bit is insignificant only when the
+  type has a named bit list. The table is the one place where that fact
+  survives.
 
-- **Subtype constraints are checked only when asked.** Neither direction enforces
-  a `SIZE`, a range or a permitted alphabet on its own: the reader takes a
-  ten-octet `iccid` written as four. Pass `-C`, or call `vn_check_constraints()`,
-  and it is caught and located. What is enforced unconditionally is the shape the
-  schema gives a value — a mandatory member may not be missing, a member may not
-  repeat, an unknown one is an error.
+- **A subtype constraint is checked on request alone.** Neither direction
+  enforces a `SIZE`, a range or a permitted alphabet by itself. The reader
+  therefore accepts a ten-octet `iccid` written as four. Pass `-C`, or call
+  `vn_check_constraints()`, and the error is caught and located. What both
+  directions do enforce is the shape that the schema gives a value. A mandatory
+  member cannot be missing, a member cannot repeat, and an unknown member is an
+  error.
 
   ```
   $ asn1vn -r -C < edited.vn > profile.der
   asn1vn: value 1 violates the schema: header.iccid (OCTET STRING): constraint failed
   ```
 
-  The walk is ours rather than `asn_check_constraints()`, which under-reports:
-  `SEQUENCE_constraint` returns at the first member carrying no constraint of its
-  own, and for the SAIP header that is `major-version`, four members ahead of
-  `iccid`. `contrib/asn1c-B-constraint-loop.patch` fixes asn1c;
-  `vn_check_constraints()` does not need it.
+  The walk is ours and not `asn_check_constraints()`, which under-reports.
+  `SEQUENCE_constraint` returns at the first member that carries no constraint
+  of its own. For the SAIP header that member is `major-version`, four members
+  ahead of `iccid`. `contrib/asn1c-B-constraint-loop.patch` corrects asn1c.
+  `vn_check_constraints()` does not need the patch.
 
-  Constraints are only part of what makes a profile valid. Rules such as "exactly
-  one header, and it comes first" are prose in the profile specification, outside
-  anything ASN.1 can state, and nothing here checks them.
+  A constraint is one part of what makes a profile valid. A rule such as
+  "exactly one header, and it comes first" is prose in the profile
+  specification. ASN.1 cannot state it, and nothing here checks it.
 
-- **An unset DEFAULT member cannot be told from an absent OPTIONAL one** where
-  asn1c dropped the value, so it is omitted.
+- **An unset DEFAULT member and an absent OPTIONAL member look alike** where
+  asn1c dropped the value, so the writer omits the member.
 
-- **`SET OF` elements are never reordered**; the decoded order is preserved.
+- **`SET OF` elements keep their order.** The writer never reorders them.
 
-## Testing
+## Tests
 
 ```sh
 make check          # 20 test binaries
 ```
 
-Layered, in increasing strength:
+Seven layers, in increasing strength:
 
-1. **Golden files** pin the exact output of all three modes. A missing golden is
-   written out but still counted as a failure — one no human has checked against
-   X.680 would freeze whatever the encoder happened to produce and call it correct.
-2. **A well-formedness scanner** independently checks brace balance, comma
-   placement, string termination and alternative syntax on everything emitted.
-3. **An XER cross-check** is the semantic oracle: the same structure is emitted as
-   value notation by this code and as XER by asn1c, and the ordered scalar
-   sequences must agree. asn1c's XER encoder shares no code with this one.
-4. **Round trip**, the acceptance criterion: DER → value notation → DER,
-   byte-compared.
-5. **Value notation somebody else wrote.** Every other layer feeds the reader
-   text this codec produced, so agreement shows only that the two halves share
-   their assumptions. `check-vn-corpus` reads a directory of foreign value
-   notation and requires two things of each file: that it parses, and that the
-   DER from their text and the DER from our re-rendering of it are identical.
-   TCA publishes its reference ProfileElements in this form; 395 of the 404 in
-   the 3.4 set pass. Of the nine that do not, two use members absent from the
-   3.4.1 schema and seven are malformed — a missing comma between components
-   (§25.18, §26.3) or a missing colon before a CHOICE alternative. The corpus is
-   not vendored here: it belongs to its publisher, so the target is pointed at
-   it.
-6. **The standard's own examples.** X.680 Annex G is transcribed into
-   `tests/schemas/annexg.asn1` and `tests/t_annexg.c`, each case labelled with the
-   subclause it came from. Where the annex asserts that two spellings denote one
-   value — `{sunday, monday, wednesday}` and `'1101000'B` under §22.7 — or that
-   two denote different ones — `'1101'B` and `'1101000'B` without a named bit
-   list, per the note to G.2.5.1 — the test asserts the same. Nothing here is our
-   reading of the standard; it is the standard's own worked material.
-7. **Fuzzing** the reader, the only part that takes input it did not produce.
+1. **Golden files** pin the exact output of all three modes. A missing golden
+   file is written out and still counts as a failure. A golden file that no
+   person checked against X.680 freezes whatever the encoder produced and calls
+   it correct.
+2. **A scanner for well-formedness** checks brace balance, comma placement,
+   string termination and alternative syntax on everything written. It shares no
+   code with the encoder.
+3. **A cross-check against XER** is the semantic oracle. The same structure goes
+   out as value notation from this code and as XER from asn1c, and the ordered
+   sequences of scalars must agree. The XER encoder of asn1c shares no code with
+   this one.
+4. **The round trip** is the acceptance criterion: DER to value notation to DER,
+   compared byte for byte.
+5. **Value notation that somebody else wrote.** Every other layer feeds the
+   reader text that this codec produced. Agreement then shows one thing alone:
+   that the two halves share their assumptions. `check-vn-corpus` reads a
+   directory of
+   foreign value notation and demands two things of each file. The file must
+   parse. The DER from their text and the DER from our rendering of it must be
+   identical. TCA publishes its reference ProfileElements in this form, and 395
+   of the 404 in the 3.4 set pass. Of the nine that fail, two use members that
+   the 3.4.1 schema does not have, and seven are malformed. Six lack a comma
+   between components (§25.18, §26.3) and one lacks a colon before a CHOICE
+   alternative. The corpus is not vendored here, because it belongs to its
+   publisher. Point the target at it.
+6. **The examples of the standard.** Annex G of X.680 is transcribed into
+   `tests/schemas/annexg.asn1` and `tests/t_annexg.c`. Each case carries the
+   subclause it came from. Where the annex states that two spellings denote one
+   value, `{sunday, monday, wednesday}` and `'1101000'B` under §22.7, the test
+   states the same. The annex also states that two spellings denote different
+   values: `'1101'B` and `'1101000'B` without a named bit list, under the note
+   to G.2.5.1. The test states that too. Nothing here is our reading of the standard. It is the
+   worked material of the standard.
+7. **Fuzzing** the reader, which is the one part that takes input it did not
+   produce.
 
 Against real data:
 
 ```sh
-make check-roundtrip  GEN_DIR=<gen> PDU=<Type> DERDIR=<dir with *.der>
-make check-vn-corpus  GEN_DIR=<gen> PDU=<Type> VNDIR=<dir with *.asn1>
+make check-roundtrip GEN_DIR=<gen> PDU=<Type> DERDIR=<dir with *.der>
+make check-vn-corpus GEN_DIR=<gen> PDU=<Type> VNDIR=<dir with *.asn1>
 make check-xer       GEN_DIR=<gen> PDU=<Type> [DERDIR=<dir> | ROUNDS=20000]
 make check-reference GEN_DIR=<gen> PDU=<Type> REFDIR=<dir with *.der and *.txt>
 make fuzz-read && ./fuzz-read -max_total_time=60
 ```
 
-`check-xer` accepts `DERDIR` because `asn_random_fill` cannot be used on every
-schema: `constr_SET_OF.c:1329` calls `random_fill` without a NULL check and neither
-`ANY` nor `OPEN_TYPE` provides one, so a `SEQUENCE OF ANY` segfaults inside asn1c.
-Real encodings also carry realistic values.
+`check-xer` accepts `DERDIR` because `asn_random_fill` does not work on every
+schema. `constr_SET_OF.c:1329` calls `random_fill` without a NULL check, and
+neither `ANY` nor `OPEN_TYPE` provides one, so a `SEQUENCE OF ANY` crashes inside
+asn1c. A real encoding also carries realistic values.
 
-Apple's clang ships without libFuzzer, so `fuzz-read` looks for a real clang
-(Homebrew's `llvm` has one) and says so if it finds none. Regression seeds from past
-findings live in `tests/fuzz-corpus/`.
+The clang of Apple ships without libFuzzer. `fuzz-read` looks for a real clang,
+which the `llvm` package of Homebrew provides. If it finds none, it says so.
+Regression seeds from past findings are in `tests/fuzz-corpus/`.
 
-### Reading another tool's output
+### Reading the output of another tool
 
-`check-reference` diffs our output against reference value notation from a
-different implementation, with `tests/reference-baseline.txt` guarding against
+`check-reference` compares our output against reference value notation from
+another implementation. `tests/reference-baseline.txt` guards against a
 regression.
 
-Measured against the GSMA eSIM test profiles: `-r` parses all four of GSMA's own
-`.txt` files completely, and the resulting DER differs from GSMA's own `.der` by a
-constant 524 bytes in exactly one construct — `sqnInit`, a `SEQUENCE OF` with a
-DEFAULT. GSMA's text states that default, GSMA's DER omits it, and asn1c keeps
-neither the value nor a comparator for it, so the encoder cannot know it equals the
-default. Every other construct matches byte for byte: 26 to 30 elements per
-profile, every type, the named numbers, and the defaults asn1c does retain.
+Measured against the GSMA eSIM test profiles, `-r` parses all four `.txt` files
+of GSMA completely. The DER that comes out differs from the DER of GSMA by a
+constant 524 bytes, in one construct: `sqnInit`, a `SEQUENCE OF` with a DEFAULT.
+The text of GSMA states that default and the DER of GSMA omits it. asn1c keeps
+neither the value nor a comparator, so the encoder cannot know that the value
+equals the default. Every other construct matches byte for byte: 26 to 30
+elements per profile, every type, the named numbers, and the defaults that asn1c
+does keep.
 
-Comparing *rendered* output against such a reference is less conclusive than it
-looks, incidentally: those files were produced from SAIP 2.3 while the schema
-compiled here is 3.4.1, so some differences are version skew rather than faults.
-That is why the round trip, which needs no reference at all, is the acceptance
-criterion.
+A comparison of *rendered* output against such a reference proves less than it
+looks. Those files came from SAIP 2.3, and the schema compiled here is 3.4.1, so
+some differences are version skew and not faults. The round trip needs no
+reference at all, and that is why it is the acceptance criterion.
 
-## ABI pinning
+## The pinned ABI
 
-asn1c 0.9.29 gives every built-in type its own operation table — `asn_OP_SEQUENCE`,
-`asn_OP_UTF8String`, 35 in all. Type dispatch is an exact pointer comparison of
-`td->op` against those globals, which is the one version-sensitive part of this
-code. An unrecognised table is a hard error, never a guess, so a version mismatch
-surfaces as a clear failure rather than wrong output.
+asn1c 0.9.29 gives every built-in type its own operation table:
+`asn_OP_SEQUENCE`, `asn_OP_UTF8String`, 35 tables in all. Type dispatch is an
+exact pointer comparison of `td->op` against those globals, and that is the one
+version-sensitive part of this code. An unrecognized table is a hard error and
+never a guess, so a version mismatch appears as a clear failure and not as wrong
+output.
 
-Pinned and tested against **asn1c 0.9.29**, specifically `v0.9.29-7-g8a274c3f`.
+Pinned against **asn1c 0.9.29**, and tested against `v0.9.29-7-g8a274c3f`.
 
-Two consequences of how asn1c packages its output shape the build:
+Two properties of the asn1c output shape the build:
 
-- **asn1c copies only the skeletons a schema uses.** A schema without `BOOLEAN`
-  yields no `BOOLEAN.c` *and no `BOOLEAN.h`*. The library is therefore compiled
-  against asn1c's installed skeleton directory, which has the complete header set,
-  and `src/vn_optabs.c` supplies a **weak definition** of every operation table and
-  helper function so the link survives the missing ones. A real skeleton's strong
-  definition always overrides the weak one.
+- **asn1c copies the skeletons that a schema uses, and no others.** A schema
+  without `BOOLEAN` yields no `BOOLEAN.c` *and no `BOOLEAN.h`*. The library is
+  therefore compiled against the installed skeleton directory of asn1c, which
+  holds the complete header set. `src/vn_optabs.c` supplies a **weak
+  definition** of every operation table and helper function, so that the link
+  survives the missing ones. A strong definition from a real skeleton always
+  wins.
 
-  This needs GCC or clang. Weak *references* do not work here on Mach-O, where they
-  apply only to dynamic libraries; weak *definitions* do, on both ELF and Mach-O.
+  This needs GCC or clang. A weak *reference* does not work here on Mach-O,
+  where it applies to dynamic libraries alone. A weak *definition* works on both
+  ELF and Mach-O.
 
-- **A generated header can shadow a system one.** The PKIX modules used by eSIM
-  profiles define an ASN.1 type `Time`, producing `Time.h`, which on a
-  case-insensitive filesystem captures the `#include <time.h>` inside asn1c's own
-  `GeneralizedTime.c` and leaves `struct tm` incomplete. `GEN_DIR` is therefore
-  passed with `-idirafter`, never `-I`, so system headers win while the schema's own
-  headers are still found.
+- **A generated header can hide a system header.** The PKIX modules that eSIM
+  profiles use define an ASN.1 type `Time`, which produces `Time.h`. On a
+  case-insensitive filesystem that header captures the `#include <time.h>`
+  inside `GeneralizedTime.c` of asn1c and leaves `struct tm` incomplete.
+  `GEN_DIR` is therefore passed with `-idirafter` and never with `-I`, so a
+  system header wins while the headers of the schema are still found.
 
-## Integrating into an asn1c converter tool
+## Other tools in this repository
 
-`contrib/` holds an 81-line patch adding `-ovn`, `-ovnc` and `-ovna` to asn1c's
-`converter-example.c`, so a tool built from it gains value notation alongside its
-other output formats — and, being built with `ASN_PDU_COLLECTION`, gets it for any
-type via `-p`. See `contrib/README.md`.
+`vn-tree` writes the element tree of a schema as JSON, read from the type
+descriptors of asn1c. A documentation generator needs it, because an element
+name in XER is not always a field name: XER names the members of a `SEQUENCE OF`
+after their type.
+
+```sh
+make vn-tree GEN_DIR=<dir> PDU=<Type>
+./vn-tree > tree.json
+```
+
+[asn1-docs](https://github.com/waigel/asn1-docs) reads that file. The [eUICC
+Profile Reference](https://waigel.github.io/euicc-profile-tool/) is built this
+way.
+
+## Adding value notation to an asn1c converter
+
+`contrib/` holds a patch of 81 lines. It adds `-ovn`, `-ovnc` and `-ovna` to
+`converter-example.c` of asn1c. A tool built from that file then has value
+notation beside its other output formats. If the tool is built with
+`ASN_PDU_COLLECTION`, it gets value notation for any type through `-p`. Read
+`contrib/README.md`.
 
 ## Design notes
 
-`docs/design/` records why things are the way they are, including the findings that
-changed the design partway through. Corrections are marked in place rather than
-edited away, since the reason a decision was reversed is usually more useful than
-the decision.
+`docs/design/` records why things are the way they are. It includes the findings
+that changed the design partway through. A correction is marked in place and not
+edited away, because the reason for a reversal is usually more useful than the
+decision.
 
 ## Contributing
 
-See `CONTRIBUTING.md`. The short version: `make check` must pass under both GCC and
-clang, new behaviour needs a test that fails without it, and changes to the reader
-get fuzzed.
+Read `CONTRIBUTING.md`. In short: `make check` must pass under GCC and under
+clang, new behavior needs a test that fails without it, and a change to the
+reader gets fuzzed.
 
-## License
+## Licence
 
-BSD-2-Clause, matching asn1c. See `LICENSE`.
+BSD-2-Clause, the same as asn1c. See `LICENSE`.
