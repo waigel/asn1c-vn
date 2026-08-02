@@ -96,6 +96,24 @@ walk(const asn_TYPE_descriptor_t *td, const char *path,
         name = (m->name && m->name[0])
                    ? m->name
                    : (mt->xml_tag ? mt->xml_tag : mt->name);
+
+        /*
+         * Except when that type is an inline CHOICE, which has no tag of its
+         * own: "File ::= SEQUENCE OF CHOICE { fileDescriptor Fcp, ... }" puts
+         * fileDescriptor directly inside the File, and an instance reads
+         * <adf-usim><fileDescriptor>, not <adf-usim><CHOICE><fileDescriptor>.
+         * Descend without adding a step so the paths match real documents.
+         */
+        if((!m->name || !m->name[0]) && mt->elements_count
+           && (!mt->name || !mt->name[0] || !strcmp(mt->name, "CHOICE"))) {
+            for(j = 0; j < depth; j++)
+                if(seen[j] == mt) recursive = 1;
+            if(recursive) continue;
+            seen[depth] = mt;
+            walk(mt, path, seen, depth + 1);
+            continue;
+        }
+
         if(!name || !name[0]) continue;
 
         for(j = 0; j < depth; j++)
