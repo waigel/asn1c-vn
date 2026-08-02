@@ -95,6 +95,26 @@ asn1vn: check-skeldir tools/asn1vn.c $(VN_SRCS)
 	    tools/asn1vn.c $(VN_SRCS) build/vn_annotations.c build/gen/*.o \
 	    -o $@ -lm
 
+# ---- element tree ---------------------------------------------------------
+# Prints the schema's element tree as JSON, for documentation tooling. Uses the
+# same GEN_DIR/PDU pair as asn1vn, but links none of the vn sources: it only
+# reads asn1c's descriptors and never encodes anything.
+#
+# Its own object directory, because the asn1vn target empties build/gen.
+
+vn-tree: check-skeldir tools/vn-tree.c
+	@test -n "$(GEN_DIR)" || { echo "set GEN_DIR=<asn1c output dir>" >&2; exit 1; }
+	@test -n "$(PDU)"     || { echo "set PDU=<root type name>" >&2; exit 1; }
+	@test -f "$(GEN_DIR)/$(PDU).h" || { \
+	    echo "GEN_DIR=$(GEN_DIR) has no $(PDU).h, so PDU=$(PDU) is wrong" >&2; \
+	    exit 1; }
+	rm -rf build/gen-tree
+	@mkdir -p build/gen-tree
+	cd build/gen-tree && $(CC) $(STD) $(CFLAGS) $(EXTRA) -w \
+	    -idirafter $(abspath $(GEN_DIR)) -c $(abspath $(GEN_SRCS))
+	$(CC) $(ALL_CFLAGS) -idirafter $(GEN_DIR) -DPDU=$(PDU) \
+	    tools/vn-tree.c build/gen-tree/*.o -o $@ -lm
+
 # ---- annotation sidecar ---------------------------------------------------
 # Recovers the identifiers asn1c parses but does not keep in the runtime
 # descriptors -- INTEGER named numbers and BIT STRING named bits -- from the
