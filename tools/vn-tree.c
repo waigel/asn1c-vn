@@ -18,9 +18,18 @@
  * xml_tag, which is why an instance contains <PINConfiguration> although no
  * field is called that. Reading it from the descriptor removes the guess.
  *
- * Recursion is real here: File contains an Fcp which contains a File. The walk
+ * A schema may recurse -- a Tree whose children are Trees -- so the walk
  * carries the descriptors on the current path and stops when it meets one
- * again, recording that it did rather than silently truncating.
+ * again, recording that it did rather than silently truncating. The check
+ * suite proves the guard on tests/schemas/tree.asn1, the one schema here that
+ * recurses, where it must fire exactly once.
+ *
+ * An earlier version of this comment claimed the eUICC schema itself recurses,
+ * "File contains an Fcp which contains a File". It does not: Fcp is a flat
+ * SEQUENCE of tagged OCTET STRINGs, the graph of the 86 types reachable from
+ * ProfileElement has no cycle, and on that schema the guard never fires. The
+ * claim survived here for weeks because nothing exercised it in either
+ * direction -- which is why the test schema above exists.
  */
 
 #include <stdio.h>

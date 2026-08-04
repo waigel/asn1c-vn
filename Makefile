@@ -128,7 +128,7 @@ vn-annotate: tools/vn-annotate.c
 
 # ---- tests ----------------------------------------------------------------
 
-SCHEMAS := prim constructed strings opentype kitchen annotate annexg constrained
+SCHEMAS := prim constructed strings opentype kitchen annotate annexg constrained tree
 TESTS   := t_link t_writer t_dispatch t_integer t_octet t_sequence t_collection t_bits_oid t_strings t_opentype t_scan t_golden t_xercheck t_norm t_annotate t_roundtrip t_read_negative t_check
 
 t_link_SCHEMA   := prim
@@ -202,10 +202,12 @@ $(eval $(call ANNOTATED_TEST_RULE,t_annexg,annexg))
 
 ANNOTATED_TESTS := t_annogen t_annexg
 
-check: check-skeldir $(addprefix tests/bin/,$(TESTS) $(ANNOTATED_TESTS))
+check: check-skeldir $(addprefix tests/bin/,$(TESTS) $(ANNOTATED_TESTS)) check-tree
 	@rc=0; for t in $(addprefix tests/bin/,$(TESTS) $(ANNOTATED_TESTS)); do \
 	    ./$$t || rc=1; \
 	done; exit $$rc
+
+
 
 # ---- comparison against another tool's output ------------------------------
 #
@@ -357,3 +359,31 @@ fuzz-read: check-skeldir tests/gen/constructed/.built
 	$(FUZZ_CC) $(STD) $(WARN) -O1 -g $(EXTRA) $(VN_INC) -I$(SKELDIR) \
 	    -Itests -Itests/gen/constructed $(FUZZ_SAN) \
 	    tests/fuzz_read.c $(VN_SRCS) tests/gen/constructed/*.o -o $@ -lm
+
+# vn-tree's recursion guard, on the one schema that recurses. Tree contains a
+# SEQUENCE OF Tree, so the walk must meet a descriptor already on its path,
+# stop, and say so -- exactly once, at kids/Tree, and nowhere else. Every other
+# schema here is acyclic, so without this the guard is code no test reaches.
+#
+# The codec is generated without OER and PER, and compiled with the matching
+# ASN_DISABLE defines that asn1c's own generated Makefile would set: vn-tree
+# links none of the vn sources, so it has none of the weak fallbacks the t_*
+# binaries lean on, and asn1c copies OCTET_STRING.c for the SET OF machinery
+# while omitting the _oer companion it references.
+check-tree: tests/schemas/tree.asn1 tools/vn-tree.c
+	@rm -rf tests/gen/tree
+	@mkdir -p tests/gen/tree
+	@cd tests/gen/tree && $(ASN1C) -fcompound-names -no-gen-example \
+	    -no-gen-OER -no-gen-PER $(abspath tests/schemas/tree.asn1) >/dev/null
+	@$(MAKE) --no-print-directory vn-tree \
+	    GEN_DIR=tests/gen/tree PDU=Tree SKELDIR="$(SKELDIR)" \
+	    EXTRA="$(EXTRA) -DASN_DISABLE_OER_SUPPORT -DASN_DISABLE_PER_SUPPORT" \
+	    >/dev/null
+	@out=$$(./vn-tree); \
+	echo "$$out" | grep -q '"path": "kids/Tree", .*"recursive": true' || { \
+	    echo "FAIL vn-tree: the recursion at kids/Tree was not recorded" >&2; \
+	    echo "$$out" >&2; exit 1; }; \
+	n=$$(echo "$$out" | grep -c '"recursive": true'); \
+	test "$$n" -eq 1 || { \
+	    echo "FAIL vn-tree: expected one recursive mark, got $$n" >&2; exit 1; }; \
+	echo "ok   vn-tree records the recursion at kids/Tree, and only there"

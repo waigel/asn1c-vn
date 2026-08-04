@@ -1,0 +1,14 @@
+-- The one schema here that recurses, and it exists for exactly that: the
+-- recursion guard in tools/vn-tree.c had no schema anywhere in this
+-- repository on which it could fire, and a guard nothing exercises is a
+-- claim, not a behaviour. A Tree whose children are Trees is the smallest
+-- honest example.
+TREE DEFINITIONS ::=
+BEGIN
+
+Tree ::= SEQUENCE {
+    label   INTEGER,
+    kids    SEQUENCE OF Tree
+}
+
+END
