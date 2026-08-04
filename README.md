@@ -428,7 +428,7 @@ make vn-tree GEN_DIR=<dir> PDU=<Type>
 ```
 
 [asn1-docs](https://github.com/waigel/asn1-docs) reads that file. The [eUICC
-Profile Reference](https://waigel.github.io/euicc-profile-tool/) is built this
+Profile Reference](https://euicc.waigel.com) is built this
 way.
 
 ## Adding value notation to an asn1c converter

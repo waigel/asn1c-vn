@@ -19,7 +19,7 @@ Apply with `git am` in an asn1c checkout, then reinstall the skeletons.
 
 # Integrating asn1c-vn into an asn1c converter tool
 
-`ept` in [euicc-profile-tool](https://github.com/waigel/euicc-profile-tool) is
+`ept` in [euicc-schema](https://github.com/waigel/euicc-schema) is
 asn1c's `converter-example.c` built with `ASN_PDU_COLLECTION`. Encoding there goes
 through a single call, `asn_encode(NULL, osyntax, ...)`, which dispatches on
 `enum asn_transfer_syntax`. Value notation is not in that enum, so it needs a
